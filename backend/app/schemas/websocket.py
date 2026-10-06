@@ -55,6 +55,13 @@ class IceCandidateMessage(ClientEvent):
     payload: dict[str, Any]
 
 
+class MeetingStateMessage(ClientEvent):
+    """Client requests an authoritative snapshot of current meeting state."""
+
+    type: Literal["meeting_state"]
+    participant_id: int = Field(ge=1)
+
+
 class MediaStateMessage(ClientEvent):
     type: Literal["media_state"]
     participant_id: int = Field(ge=1)
@@ -95,6 +102,7 @@ AnyClientMessage = Union[
     OfferMessage,
     AnswerMessage,
     IceCandidateMessage,
+    MeetingStateMessage,
     MediaStateMessage,
     ScreenShareMessage,
     MuteParticipantMessage,
@@ -109,6 +117,7 @@ CLIENT_MESSAGE_TYPES = (
     OfferMessage,
     AnswerMessage,
     IceCandidateMessage,
+    MeetingStateMessage,
     MediaStateMessage,
     ScreenShareMessage,
     MuteParticipantMessage,
