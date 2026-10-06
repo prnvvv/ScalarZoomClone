@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { MAX_DISPLAY_NAME_LENGTH } from "@/lib/constants";
 import {
   buildStartTimestamp,
+  clampDisplayName,
   extractMeetingId,
   isValidMeetingId,
   toLocalDateInputValue,
@@ -213,5 +215,34 @@ describe("validateScheduleForm", () => {
     expect(
       errors.some((e) => e.message === "Pick a start time in the future.")
     ).toBe(true);
+  });
+});
+
+describe("clampDisplayName", () => {
+  it("leaves a normal name untouched", () => {
+    expect(clampDisplayName("Ann")).toBe("Ann");
+  });
+
+  it("trims surrounding whitespace", () => {
+    expect(clampDisplayName("   Ann   ")).toBe("Ann");
+  });
+
+  it("never exceeds the server's 100 character limit", () => {
+    // The REST layer rejects 101+; the socket accepts up to 120. Sending more
+    // stores a row that then cannot be serialised by ParticipantOut.
+    expect(clampDisplayName("x".repeat(140))).toHaveLength(100);
+    expect(clampDisplayName("x".repeat(101))).toHaveLength(100);
+    expect(clampDisplayName("x".repeat(100))).toHaveLength(100);
+    expect(clampDisplayName("x".repeat(120))).toHaveLength(100);
+  });
+
+  it("matches MAX_DISPLAY_NAME_LENGTH", () => {
+    expect(clampDisplayName("x".repeat(500)).length).toBe(
+      MAX_DISPLAY_NAME_LENGTH
+    );
+  });
+
+  it("trims before clamping so padding cannot push a valid name over", () => {
+    expect(clampDisplayName(`  ${"x".repeat(100)}  `)).toBe("x".repeat(100));
   });
 });
