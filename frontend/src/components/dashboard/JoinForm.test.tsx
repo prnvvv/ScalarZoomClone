@@ -1,0 +1,91 @@
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ToastProvider } from "@/components/common/ToastProvider";
+import { JoinForm } from "@/components/dashboard/JoinForm";
+import { joinMeeting } from "@/services/meetingService";
+
+const push = vi.hoisted(() => vi.fn());
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push }),
+}));
+
+vi.mock("next/link", () => ({
+  default: ({
+    href,
+    children,
+    ...rest
+  }: {
+    href: string;
+    children: React.ReactNode;
+  } & Record<string, unknown>) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+
+vi.mock("@/services/meetingService", () => ({
+  joinMeeting: vi.fn(),
+}));
+
+beforeEach(() => push.mockReset());
+afterEach(cleanup);
+
+function renderForm() {
+  return render(
+    <ToastProvider>
+      <JoinForm />
+    </ToastProvider>
+  );
+}
+
+function fill(displayName: string, meetingId: string) {
+  fireEvent.change(screen.getByLabelText("Meeting ID or invite link"), {
+    target: { value: meetingId },
+  });
+  fireEvent.change(screen.getByLabelText("Your name"), {
+    target: { value: displayName },
+  });
+}
+
+describe("JoinForm", () => {
+  it("blocks submission without a meeting ID", async () => {
+    renderForm();
+    fireEvent.click(screen.getByRole("button", { name: /Join Meeting/ }));
+
+    expect(
+      await screen.findByText("Enter a meeting ID or invite link.")
+    ).toBeTruthy();
+    expect(vi.mocked(joinMeeting)).not.toHaveBeenCalled();
+  });
+
+  it("joins with a raw meeting ID and remembers the display name", async () => {
+    vi.mocked(joinMeeting).mockResolvedValue(undefined as never);
+    renderForm();
+
+    fill("Priya", "abc123");
+    fireEvent.click(screen.getByRole("button", { name: /Join Meeting/ }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/meetings/abc123"));
+    expect(vi.mocked(joinMeeting)).toHaveBeenCalledWith("abc123", {
+      display_name: "Priya",
+    });
+    expect(window.sessionStorage.getItem("scalarmeet.display_name")).toBe(
+      "Priya"
+    );
+  });
+
+  it("extracts the meeting ID from a pasted invite link", async () => {
+    vi.mocked(joinMeeting).mockResolvedValue(undefined as never);
+    renderForm();
+
+    fill("Ann", "https://scalar.app/meetings/xyz789?pwd=secret");
+    fireEvent.click(screen.getByRole("button", { name: /Join Meeting/ }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/meetings/xyz789"));
+    expect(vi.mocked(joinMeeting)).toHaveBeenCalledWith("xyz789", {
+      display_name: "Ann",
+    });
+  });
+});
