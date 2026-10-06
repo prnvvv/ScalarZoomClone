@@ -35,6 +35,8 @@ export function useWebSocket({
 
   useEffect(() => {
     if (!enabled) return;
+    // `connect()` reports "connecting" first, which resets a stale status left
+    // by a previous session so the join effect fires again for this socket.
     const socket = new MeetingSocket(meetingId, {
       onMessage: (message) => onMessageRef.current(message),
       onStatus: setStatus,
