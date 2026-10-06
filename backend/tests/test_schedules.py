@@ -328,3 +328,28 @@ def test_schedule_endpoints_respect_limit_query(client):
 
     assert len(client.get("/api/schedules/upcoming", params={"limit": 2}).json()) == 2
     assert client.get("/api/schedules/upcoming", params={"limit": 0}).status_code == 422
+
+# --------------------------------------------------------------------------
+# Duration type strictness (regression guard)
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("duration", [True, False])
+def test_boolean_duration_is_rejected(client, duration):
+    """Regression: JSON true/false was coerced into a 1/0 minute meeting."""
+    start = (utc_now() + timedelta(days=1)).isoformat()
+    response = client.post(
+        "/api/schedules",
+        json={"title": "bool duration", "start_time": start, "duration": duration},
+    )
+    assert response.status_code == 422, (duration, response.status_code)
+
+
+def test_validate_duration_rejects_bool():
+    from app.utils.validation import validate_duration
+
+    with pytest.raises(InvalidRequestError):
+        validate_duration(True)
+    with pytest.raises(InvalidRequestError):
+        validate_duration(False)
+    assert validate_duration(30) == 30
