@@ -23,21 +23,3 @@ export function SkeletonList({ rows = 3 }: { rows?: number }) {
     </div>
   );
 }
-
-export function LoadingLabel({ label = "Loading" }: { label?: string }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        color: "var(--color-text-secondary)",
-        fontSize: "var(--text-sm)",
-      }}
-      role="status"
-    >
-      <span className="spinner" />
-      {label}
-    </div>
-  );
-}
