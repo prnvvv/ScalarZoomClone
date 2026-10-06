@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
@@ -518,11 +517,18 @@ async def _handle_mute_participant(
     if not authorized:
         return
 
+    # Persist before announcing, so the broadcast never disagrees with the row.
+    await run_in_threadpool(
+        participant_service.update_participant_state,
+        db,
+        target_id,
+        is_muted=message.is_muted,
+    )
     await manager.broadcast(
         session.meeting_id,
         {
             "type": "host_action",
-            "action": "mute",
+            "action": "mute" if message.is_muted else "unmute",
             "target_id": target_id,
         },
     )

@@ -166,7 +166,12 @@ def seed_sample_meetings(
 
 
 def run_seed(db: Session) -> dict[str, int]:
-    """Insert whatever is missing and report how many rows were created."""
+    """Insert whatever is missing and report how many rows were created.
+
+    Creates the schema first when it is missing, so this is safe to call
+    against a fresh database. Both steps are idempotent.
+    """
+    init_db()
     user, user_created = seed_demo_user(db)
     counts = seed_sample_meetings(db, host_id=user.id)
     counts["users"] = int(user_created)

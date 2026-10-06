@@ -79,6 +79,8 @@ class MuteParticipantMessage(ClientEvent):
     type: Literal["mute_participant"]
     participant_id: int = Field(ge=1)
     target_id: int = Field(ge=1)
+    # Optional so existing clients keep muting; False unmutes the target.
+    is_muted: bool = True
 
 
 class RemoveParticipantMessage(ClientEvent):

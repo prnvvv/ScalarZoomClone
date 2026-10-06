@@ -844,3 +844,47 @@ def test_manager_drops_dead_connection_on_broadcast():
 
 def test_manager_reconnect_replaces_stale_socket():
     asyncio.run(_check_reconnect_replaces_stale_socket())
+
+
+@requires_bd1
+def test_host_mute_is_persisted_and_can_be_lifted(client, db):
+    """Regression: the host_action broadcast used to be sent without writing the row."""
+    from app.services import participant_service
+
+    _seed_meeting(db, MEETING_A, host_id=1)
+    host = _create_participant(db, MEETING_A, "Host", user_id=1)
+    guest = _create_participant(db, MEETING_A, "Guest", user_id=2)
+
+    socket_host, _ = _join(client, MEETING_A, host.id, "Host")
+    socket_guest, _ = _join(client, MEETING_A, guest.id, "Guest")
+    socket_host.receive_json()
+
+    socket_host.send_json(
+        {
+            "type": "mute_participant",
+            "participant_id": host.id,
+            "target_id": guest.id,
+        }
+    )
+    muted = socket_guest.receive_json()
+    assert muted == {"type": "host_action", "action": "mute", "target_id": guest.id}
+
+    db.expire_all()
+    assert participant_service.get_participant(db, guest.id).is_muted is True
+
+    socket_host.send_json(
+        {
+            "type": "mute_participant",
+            "participant_id": host.id,
+            "target_id": guest.id,
+            "is_muted": False,
+        }
+    )
+    unmuted = socket_guest.receive_json()
+    assert unmuted == {"type": "host_action", "action": "unmute", "target_id": guest.id}
+
+    db.expire_all()
+    assert participant_service.get_participant(db, guest.id).is_muted is False
+
+    socket_host.close()
+    socket_guest.close()
