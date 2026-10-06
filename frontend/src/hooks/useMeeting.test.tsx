@@ -57,10 +57,14 @@ vi.mock("@/hooks/useMediaDevices", () => ({
 vi.mock("@/hooks/useWebRTC", () => ({
   useWebRTC: () => ({
     remoteStreams: {},
+    screenStream: null,
     syncPeers,
     handleSignal,
     closePeer,
     resetPeers,
+    startScreenShare: vi.fn().mockResolvedValue(false),
+    stopScreenShare: vi.fn(),
+    onScreenShareStopped: vi.fn(),
   }),
 }));
 
