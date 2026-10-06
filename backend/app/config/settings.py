@@ -16,7 +16,7 @@ class Settings:
         self.app_name: str = os.getenv("APP_NAME", "Scalar Meeting API")
         self.database_url: str = os.getenv(
             "DATABASE_URL",
-            "sqlite:///./scalar_meeting.db",
+            "sqlite:///./data/zoom_clone.db",
         )
         self.frontend_url: str = os.getenv(
             "FRONTEND_URL",
