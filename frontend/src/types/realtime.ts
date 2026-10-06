@@ -57,6 +57,12 @@ export interface EndMeetingMessage {
   participant_id: number;
 }
 
+export interface ReactionMessage {
+  type: "reaction";
+  participant_id: number;
+  emoji: string;
+}
+
 export interface PingMessage {
   type: "ping";
 }
@@ -71,6 +77,7 @@ export type ClientMessage =
   | MuteParticipantMessage
   | RemoveParticipantMessage
   | EndMeetingMessage
+  | ReactionMessage
   | PingMessage;
 
 /** Server -> client messages (mirrors `app/websocket/handler.py`). */
@@ -117,6 +124,13 @@ export interface MeetingEndedMessage {
   meeting_id: string;
 }
 
+/** Transient emoji from another participant; never persisted. */
+export interface ReactionEventMessage {
+  type: "reaction";
+  participant_id: number;
+  emoji: string;
+}
+
 export interface ErrorMessage {
   type: "error";
   code: WsErrorCode;
@@ -136,6 +150,7 @@ export type ServerMessage =
   | MeetingStateMessage
   | HostActionMessage
   | MeetingEndedMessage
+  | ReactionEventMessage
   | ErrorMessage
   | PongMessage;
 
