@@ -28,6 +28,7 @@ from app.schemas.websocket import (
     MuteParticipantMessage,
     OfferMessage,
     PingMessage,
+    ReactionMessage,
     RemoveParticipantMessage,
     ScreenShareMessage,
     parse_client_message,
@@ -175,6 +176,8 @@ async def _dispatch(
             await _handle_remove_participant(websocket, session, manager, db, message)
         elif isinstance(message, EndMeetingMessage):
             await _handle_end_meeting(websocket, session, manager, db)
+        elif isinstance(message, ReactionMessage):
+            await _handle_reaction(websocket, session, manager, message)
         else:
             await _send_error(
                 websocket,
@@ -640,6 +643,37 @@ async def _handle_end_meeting(
 
     session.closing = True
     await websocket.close()
+
+
+async def _handle_reaction(
+    websocket: WebSocket,
+    session: RealtimeSession,
+    manager: ConnectionManager,
+    message: ReactionMessage,
+) -> None:
+    """Relay a transient emoji to everyone else in the room.
+
+    The sender is excluded: it renders its own reaction locally, so a single
+    click never shows up twice. Nothing is written to the participant row —
+    a reaction is ephemeral by contract.
+    """
+    if message.participant_id != session.participant_id:
+        await _send_error(
+            websocket,
+            ErrorCode.UNAUTHORIZED_ACTION,
+            "Cannot react on behalf of another participant",
+        )
+        return
+
+    await manager.broadcast_except(
+        session.meeting_id,
+        {
+            "type": "reaction",
+            "participant_id": message.participant_id,
+            "emoji": message.emoji,
+        },
+        exclude={message.participant_id},
+    )
 
 
 async def _cleanup(
