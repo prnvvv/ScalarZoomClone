@@ -1,15 +1,60 @@
 "use client";
 
+import { useMemo } from "react";
 import { useToast } from "@/components/common/ToastProvider";
-import { CopyIcon, XIcon } from "@/components/icons";
-import { buildInviteUrl, copyText } from "@/lib/utils";
+import {
+  CopyIcon,
+  LinkIcon,
+  MicIcon,
+  MicOffIcon,
+  PhoneOffIcon,
+  ScreenShareIcon,
+  UsersIcon,
+  VideoIcon,
+  VideoOffIcon,
+  XIcon,
+} from "@/components/icons";
+import { buildInviteUrl, copyText, getInitials } from "@/lib/utils";
 import type { ParticipantSummary } from "@/types/participant";
 
 interface ParticipantsPanelProps {
   participants: ParticipantSummary[];
   meetingId: string;
   localName: string;
+  /** Authoritative — set from the server's `meeting_state.is_host`. */
+  isHost?: boolean;
+  selfId?: number | null;
   onClose: () => void;
+  onMuteParticipant?: (targetId: number, muted: boolean) => void;
+  onRemoveParticipant?: (targetId: number) => void;
+  onMuteAll?: () => void;
+  onEndMeeting?: () => void;
+}
+
+/** Host first, then you, then everyone else alphabetically. */
+function sortRoster(
+  participants: ParticipantSummary[],
+  selfId: number | null
+): ParticipantSummary[] {
+  const rank = (participant: ParticipantSummary): number => {
+    const isSelf = selfId !== null && participant.id === selfId;
+    if (participant.is_host) return 0;
+    return isSelf ? 1 : 2;
+  };
+  return [...participants].sort((a, b) => {
+    const byRank = rank(a) - rank(b);
+    if (byRank !== 0) return byRank;
+    return a.display_name.localeCompare(b.display_name);
+  });
+}
+
+function isSelf(
+  participant: ParticipantSummary,
+  selfId: number | null,
+  localName: string
+): boolean {
+  if (selfId !== null) return participant.id === selfId;
+  return participant.display_name === localName;
 }
 
 /** Slide-in panel listing who is in the meeting. */
@@ -17,16 +62,24 @@ export function ParticipantsPanel({
   participants,
   meetingId,
   localName,
+  isHost = false,
+  selfId = null,
   onClose,
+  onMuteParticipant,
+  onRemoveParticipant,
+  onMuteAll,
+  onEndMeeting,
 }: ParticipantsPanelProps) {
   const { toast } = useToast();
 
-  const copyInvite = async () => {
-    const ok = await copyText(buildInviteUrl(meetingId));
-    toast(
-      ok ? "Invite link copied" : "Could not copy the invite link",
-      ok ? "success" : "error"
-    );
+  const roster = useMemo(
+    () => sortRoster(participants, selfId),
+    [participants, selfId]
+  );
+
+  const copy = async (value: string, ok: string) => {
+    const copied = await copyText(value);
+    toast(copied ? ok : "Could not copy to the clipboard", copied ? "success" : "error");
   };
 
   return (
@@ -49,34 +102,178 @@ export function ParticipantsPanel({
         </button>
       </div>
 
+      {isHost && (onMuteAll || onEndMeeting) ? (
+        <div className="room-panel__hostbar">
+          <span className="room-panel__hostbar-label">
+            <UsersIcon size={14} />
+            Host controls
+          </span>
+          <div className="room-panel__hostbar-actions">
+            {onMuteAll ? (
+              <button
+                type="button"
+                className="room__chip"
+                onClick={onMuteAll}
+                aria-label="Mute everyone except the host"
+              >
+                <MicOffIcon size={14} />
+                Mute all
+              </button>
+            ) : null}
+            {onEndMeeting ? (
+              <button
+                type="button"
+                className="room__chip room__chip--danger"
+                onClick={onEndMeeting}
+                aria-label="End meeting for everyone"
+              >
+                <PhoneOffIcon size={14} />
+                End meeting
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       <div className="room-panel__body">
-        {participants.map((participant) => {
-          const isYou = participant.display_name === localName;
-          return (
-            <div className="participant-row" key={participant.id}>
-              <div className="participant-row__body">
-                <div className="participant-row__name">
-                  {participant.display_name}
-                  {isYou ? " (You)" : ""}
+        {roster.length === 0 ? (
+          <p className="room-panel__empty">Nobody else is here yet.</p>
+        ) : (
+          roster.map((participant) => {
+            const you = isSelf(participant, selfId, localName);
+            const canAct = isHost && !you;
+            return (
+              <div className="participant-row" key={participant.id}>
+                <span className="participant-row__avatar" aria-hidden="true">
+                  {getInitials(participant.display_name)}
+                </span>
+                <div className="participant-row__body">
+                  <div className="participant-row__name">
+                    <span>{participant.display_name}</span>
+                    {participant.is_host ? (
+                      <span className="participant-row__badge">Host</span>
+                    ) : null}
+                    {you ? (
+                      <span className="participant-row__badge participant-row__badge--muted">
+                        You
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="participant-row__meta">
+                    {participant.is_muted ? "Muted" : "Unmuted"}
+                    {" · "}
+                    {participant.is_video_on ? "Camera on" : "Camera off"}
+                  </div>
                 </div>
-                <div className="participant-row__meta">
-                  {participant.is_host ? "Host" : "Participant"}
-                  {participant.is_muted ? " · Muted" : ""}
+
+                <div className="participant-row__indicators">
+                  {participant.screen_share ? (
+                    <span
+                      className="participant-row__indicator"
+                      title="Sharing screen"
+                      aria-label={`${participant.display_name} is sharing their screen`}
+                    >
+                      <ScreenShareIcon size={14} />
+                    </span>
+                  ) : null}
+                  {participant.is_muted ? (
+                    <span
+                      className="participant-row__indicator"
+                      title="Muted"
+                      aria-label={`${participant.display_name} is muted`}
+                    >
+                      <MicOffIcon size={14} />
+                    </span>
+                  ) : (
+                    <span
+                      className="participant-row__indicator participant-row__indicator--on"
+                      title="Unmuted"
+                      aria-label={`${participant.display_name} is unmuted`}
+                    >
+                      <MicIcon size={14} />
+                    </span>
+                  )}
+                  {participant.is_video_on ? (
+                    <span
+                      className="participant-row__indicator participant-row__indicator--on"
+                      title="Camera on"
+                      aria-label={`${participant.display_name} camera is on`}
+                    >
+                      <VideoIcon size={14} />
+                    </span>
+                  ) : (
+                    <span
+                      className="participant-row__indicator"
+                      title="Camera off"
+                      aria-label={`${participant.display_name} camera is off`}
+                    >
+                      <VideoOffIcon size={14} />
+                    </span>
+                  )}
                 </div>
+
+                {canAct && (onMuteParticipant || onRemoveParticipant) ? (
+                  <div className="participant-row__actions">
+                    {onMuteParticipant ? (
+                      <button
+                        type="button"
+                        className="room-icon-button"
+                        aria-label={
+                          participant.is_muted
+                            ? `Ask ${participant.display_name} to unmute`
+                            : `Mute ${participant.display_name}`
+                        }
+                        onClick={() =>
+                          onMuteParticipant(participant.id, !participant.is_muted)
+                        }
+                      >
+                        {participant.is_muted ? (
+                          <MicIcon size={16} />
+                        ) : (
+                          <MicOffIcon size={16} />
+                        )}
+                      </button>
+                    ) : null}
+                    {onRemoveParticipant ? (
+                      <button
+                        type="button"
+                        className="room-icon-button room-icon-button--danger"
+                        aria-label={`Remove ${participant.display_name} from the meeting`}
+                        onClick={() => onRemoveParticipant(participant.id)}
+                      >
+                        <XIcon size={16} />
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
 
       <div className="room-panel__footer">
+        <div className="room-panel__invite">
+          <span className="room-panel__invite-label">Meeting ID</span>
+          <span className="room-panel__invite-value">{meetingId}</span>
+          <button
+            type="button"
+            className="room-icon-button"
+            aria-label="Copy meeting ID"
+            onClick={() => void copy(meetingId, "Meeting ID copied")}
+          >
+            <CopyIcon size={16} />
+          </button>
+        </div>
         <button
           type="button"
           className="room__chip"
-          onClick={copyInvite}
+          onClick={() =>
+            void copy(buildInviteUrl(meetingId), "Invite link copied")
+          }
           aria-label="Copy invite link"
         >
-          <CopyIcon size={14} />
+          <LinkIcon size={14} />
           Copy invite link
         </button>
       </div>
