@@ -44,3 +44,34 @@ updates:
       - dependency-name: "sqlalchemy"
         update-types:
           - "version-update:semver-major"
+
+  # Frontend packages (frontend/package-lock.json). Minor and patch updates
+  # are grouped; framework majors are ignored because they carry breaking
+  # changes that must be reviewed against frontend/AGENTS.md first.
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps"
+    labels:
+      - "dependencies"
+      - "javascript"
+    groups:
+      frontend-minor:
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      - dependency-name: "next"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "react"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "react-dom"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "eslint-config-next"
+        update-types:
+          - "version-update:semver-major"
