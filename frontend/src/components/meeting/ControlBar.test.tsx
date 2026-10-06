@@ -41,6 +41,7 @@ function renderBar(overrides: Partial<Parameters<typeof ControlBar>[0]> = {}) {
     <ControlBar
       isMuted={false}
       isVideoOn
+      audioJoined
       audioAvailable
       videoAvailable
       participantsOpen={false}
@@ -82,6 +83,27 @@ describe("ControlBar", () => {
     renderBar({ isMuted: true, isVideoOn: false });
     expect(screen.getByRole("button", { name: "Unmute microphone" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Turn camera on" })).toBeTruthy();
+  });
+
+  it("shows Join Audio before audio is joined and routes the click to join", () => {
+    const { onToggleMute } = renderBar({ audioJoined: false, isMuted: true });
+    const join = screen.getByRole("button", { name: "Join Audio" });
+    expect(join.textContent).toContain("Join Audio");
+    expect(join.getAttribute("aria-pressed")).toBeNull();
+
+    fireEvent.click(join);
+    expect(onToggleMute).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows Start Video while the camera is off", () => {
+    renderBar({ isVideoOn: false });
+    expect(screen.getByText("Start Video")).toBeTruthy();
+    expect(screen.queryByText("Stop Video")).toBeNull();
+  });
+
+  it("shows Stop Video while the camera is on", () => {
+    renderBar({ isVideoOn: true });
+    expect(screen.getByText("Stop Video")).toBeTruthy();
   });
 
   it("leaves the meeting when End is clicked", () => {
