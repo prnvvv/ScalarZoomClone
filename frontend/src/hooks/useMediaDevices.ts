@@ -12,6 +12,10 @@ export interface MediaDevicesState {
   stream: MediaStream | null;
   isMuted: boolean;
   isVideoOn: boolean;
+  /** False when no microphone track could be acquired (missing or blocked). */
+  audioAvailable: boolean;
+  /** False when no camera track could be acquired (missing or blocked). */
+  videoAvailable: boolean;
   /** Friendly message when camera/microphone could not be acquired. */
   error: string | null;
   audioInputDevices: MediaDeviceInfo[];
@@ -143,6 +147,8 @@ export function useMediaDevices(): MediaDevicesState {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOn, setIsVideoOn] = useState(true);
+  const [audioAvailable, setAudioAvailable] = useState(true);
+  const [videoAvailable, setVideoAvailable] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>([]);
@@ -231,6 +237,8 @@ export function useMediaDevices(): MediaDevicesState {
     }
     const audioTracks = next.getAudioTracks();
     const videoTracks = next.getVideoTracks();
+    setAudioAvailable(audioTracks.length > 0);
+    setVideoAvailable(videoTracks.length > 0);
 
     if (preserveFlags) {
       audioTracks.forEach((track) => {
@@ -292,6 +300,8 @@ export function useMediaDevices(): MediaDevicesState {
       if (!canGetUserMedia()) {
         setIsMuted(true);
         setIsVideoOn(false);
+        setAudioAvailable(false);
+        setVideoAvailable(false);
         setError(MEDIA_ERROR);
         return;
       }
@@ -305,12 +315,16 @@ export function useMediaDevices(): MediaDevicesState {
           if (errorName(cause) === "NotAllowedError") {
             setIsMuted(true);
             setIsVideoOn(false);
+            setAudioAvailable(false);
+            setVideoAvailable(false);
             setError(CAMERA_BLOCKED);
             return;
           }
           if (errorName(cause) === "NotReadableError") {
             setIsMuted(true);
             setIsVideoOn(false);
+            setAudioAvailable(false);
+            setVideoAvailable(false);
             setError(DEVICE_BUSY);
             return;
           }
@@ -324,6 +338,8 @@ export function useMediaDevices(): MediaDevicesState {
         setStream(null);
         setIsMuted(true);
         setIsVideoOn(false);
+        setAudioAvailable(false);
+        setVideoAvailable(false);
         setError(friendlyError(cause));
       }
     },
@@ -383,6 +399,8 @@ export function useMediaDevices(): MediaDevicesState {
     stream,
     isMuted,
     isVideoOn,
+    audioAvailable,
+    videoAvailable,
     error,
     audioInputDevices,
     videoInputDevices,
