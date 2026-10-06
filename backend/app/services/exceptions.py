@@ -1,0 +1,26 @@
+"""Expected service failures shared by routers and services.
+
+Routers translate these into HTTP responses:
+
+* :class:`InvalidRequestError`  -> 400
+* :class:`MeetingNotFoundError` -> 404
+* :class:`MeetingConflictError` -> 409
+"""
+
+from __future__ import annotations
+
+
+class ServiceError(Exception):
+    """Base class for anticipated, user-facing service failures."""
+
+
+class InvalidRequestError(ServiceError):
+    """The request cannot be honoured as submitted (HTTP 400)."""
+
+
+class MeetingNotFoundError(ServiceError):
+    """No meeting matches the supplied public meeting id (HTTP 404)."""
+
+
+class MeetingConflictError(ServiceError):
+    """The operation conflicts with the meeting's current state (HTTP 409)."""
