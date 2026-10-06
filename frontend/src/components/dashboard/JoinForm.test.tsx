@@ -64,11 +64,11 @@ describe("JoinForm", () => {
     vi.mocked(joinMeeting).mockResolvedValue(undefined as never);
     renderForm();
 
-    fill("Priya", "abc123");
+    fill("Priya", "839452761");
     fireEvent.click(screen.getByRole("button", { name: /Join Meeting/ }));
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith("/meetings/abc123"));
-    expect(vi.mocked(joinMeeting)).toHaveBeenCalledWith("abc123", {
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/meetings/839452761"));
+    expect(vi.mocked(joinMeeting)).toHaveBeenCalledWith("839452761", {
       display_name: "Priya",
     });
     expect(window.sessionStorage.getItem("scalarmeet.display_name")).toBe(
@@ -80,11 +80,11 @@ describe("JoinForm", () => {
     vi.mocked(joinMeeting).mockResolvedValue(undefined as never);
     renderForm();
 
-    fill("Ann", "https://scalar.app/meetings/xyz789?pwd=secret");
+    fill("Ann", "https://scalar.app/meetings/810288678?pwd=secret");
     fireEvent.click(screen.getByRole("button", { name: /Join Meeting/ }));
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith("/meetings/xyz789"));
-    expect(vi.mocked(joinMeeting)).toHaveBeenCalledWith("xyz789", {
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/meetings/810288678"));
+    expect(vi.mocked(joinMeeting)).toHaveBeenCalledWith("810288678", {
       display_name: "Ann",
     });
   });
