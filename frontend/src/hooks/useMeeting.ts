@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toUserMessage } from "@/lib/api-client";
 import { STORAGE_KEYS } from "@/lib/constants";
+import { clampDisplayName } from "@/lib/validators";
 import { joinMeeting } from "@/services/meetingService";
 import { useMediaDevices } from "@/hooks/useMediaDevices";
 import { useWebRTC } from "@/hooks/useWebRTC";
@@ -258,7 +259,9 @@ export function useMeeting({
     nameRef.current = displayName;
     void (async () => {
       try {
-        await joinMeeting(meetingId, { display_name: displayName });
+        await joinMeeting(meetingId, {
+          display_name: clampDisplayName(displayName),
+        });
       } catch (cause: unknown) {
         if (!active) return;
         setFailure(toUserMessage(cause));
@@ -294,7 +297,7 @@ export function useMeeting({
       type: "join",
       meeting_id: meetingId,
       participant_id: participantId && participantId > 0 ? participantId : null,
-      display_name: nameRef.current,
+      display_name: clampDisplayName(nameRef.current),
     });
   }, [ws.status, phase, meetingId, send]);
 
