@@ -87,7 +87,13 @@ class Meeting(Base):
     # History is preserved: no delete cascade, and the FK is RESTRICT, so a
     # meeting with history cannot be physically deleted. End/cancel instead.
     history: Mapped[MeetingHistory | None] = relationship(
-        "MeetingHistory", back_populates="meeting", uselist=False
+        "MeetingHistory",
+        back_populates="meeting",
+        uselist=False,
+        # Without this the ORM tries to NULL the child foreign key on delete
+        # and fails with "NOT NULL constraint failed" instead of surfacing the
+        # RESTRICT rule below.
+        passive_deletes=True,
     )
 
     def __repr__(self) -> str:
