@@ -6,11 +6,3 @@ export interface ScheduleCreatePayload {
   /** Minutes, 1..1440. */
   duration: number;
 }
-
-export interface ScheduleFormValues {
-  title: string;
-  description: string;
-  date: string;
-  time: string;
-  duration: number;
-}
