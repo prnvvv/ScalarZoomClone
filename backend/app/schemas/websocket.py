@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal, Union
+from typing import Any, Literal, Union, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -118,6 +118,24 @@ CLIENT_MESSAGE_TYPES = (
 )
 
 
+def _literal_of(model: type[ClientEvent]) -> str:
+    """Extract the single ``Literal`` value from a message model's ``type`` field.
+
+    ``type`` is annotated as ``Literal["join"]`` and so carries no field
+    default; the literal lives on the annotation.
+    """
+    annotation = model.model_fields["type"].annotation
+    values = get_args(annotation)
+    if len(values) != 1 or not isinstance(values[0], str):
+        raise TypeError(f"{model.__name__}.type must be a single string Literal")
+    return values[0]
+
+
+_MESSAGE_TYPE_MAP: dict[str, type[ClientEvent]] = {
+    _literal_of(model): model for model in CLIENT_MESSAGE_TYPES
+}
+
+
 def parse_client_message(raw: Any) -> AnyClientMessage:
     """Validate an inbound realtime payload into a typed message.
 
@@ -130,8 +148,8 @@ def parse_client_message(raw: Any) -> AnyClientMessage:
     if not isinstance(event_type, str):
         raise ValueError("Message is missing a string 'type' field")
 
-    for model in CLIENT_MESSAGE_TYPES:
-        if model.model_fields["type"].default == event_type:
-            return model.model_validate(raw)
+    model = _MESSAGE_TYPE_MAP.get(event_type)
+    if model is None:
+        raise ValueError(f"Unsupported message type: {event_type}")
 
-    raise ValueError(f"Unsupported message type: {event_type}")
+    return model.model_validate(raw)
