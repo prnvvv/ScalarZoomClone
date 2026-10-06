@@ -62,6 +62,13 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    # Only minor/patch updates may open automatically. Majors (typescript 7,
+    # @types/node 26, jsdom 30, eslint 10) break the toolchain and must be
+    # reviewed against frontend/AGENTS.md by hand.
+    allow:
+      - update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     ignore:
       - dependency-name: "next"
         update-types:
