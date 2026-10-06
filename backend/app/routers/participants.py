@@ -43,7 +43,6 @@ def add_meeting_participant(
         db,
         meeting_id=meeting_id,
         display_name=payload.display_name,
-        user_id=payload.user_id,
         is_host=False,
     )
     return ParticipantOut.model_validate(participant)
