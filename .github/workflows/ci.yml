@@ -41,7 +41,7 @@ jobs:
         run: python -m pytest -v --tb=short -rs
 
   frontend:
-    name: Lint, typecheck, test and build
+    name: Frontend tests
     runs-on: ubuntu-24.04
     defaults:
       run:
