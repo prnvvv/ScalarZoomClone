@@ -310,9 +310,10 @@
   align-items: flex-end;
   justify-content: space-between;
   gap: 10px;
-  padding: 14px 16px calc(16px + env(safe-area-inset-bottom));
+  padding: 14px 24px calc(18px + env(safe-area-inset-bottom));
   background: var(--room-surface);
   border-top: 1px solid var(--room-border);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.24);
   flex-wrap: wrap;
 }
 
@@ -321,7 +322,7 @@
   align-items: flex-end;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 6px 10px;
+  gap: 8px 14px;
   flex: 1;
   min-width: 0;
 }
@@ -343,6 +344,11 @@
   font-weight: 500;
   cursor: pointer;
   padding: 0;
+  transition: color var(--transition-fast);
+}
+
+.control:hover {
+  color: var(--room-text);
 }
 
 .control__button {
@@ -356,21 +362,29 @@
   border: 1px solid var(--room-border);
   color: var(--room-text);
   transition: background-color var(--transition-fast),
-    border-color var(--transition-fast), transform var(--transition-fast);
+    border-color var(--transition-fast), transform var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .control:hover .control__button {
   background: #2b2f38;
+  border-color: #3a404b;
 }
 
 .control:active .control__button {
   transform: scale(0.96);
 }
 
+/* Muted mic / camera off / not yet joined — the Zoom red state. */
 .control--off .control__button {
-  background: #ffffff;
-  border-color: #ffffff;
-  color: #13161c;
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: #fff;
+}
+
+.control--off:hover .control__button {
+  background: var(--color-danger-hover);
+  border-color: var(--color-danger-hover);
 }
 
 .control--danger .control__button {
@@ -389,9 +403,30 @@
   color: #fff;
 }
 
+.control--active:hover .control__button {
+  background: var(--color-primary-hover);
+}
+
+/* Share is green until it is sharing; while sharing it turns red. */
+.control--share .control__button {
+  background: var(--color-success);
+  border-color: var(--color-success);
+  color: #fff;
+}
+
+.control--share:hover .control__button {
+  background: #0e6c4d;
+  border-color: #0e6c4d;
+}
+
 .control:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.control:disabled:hover .control__button {
+  background: var(--room-surface-alt);
+  border-color: var(--room-border);
 }
 
 .control__badge {
@@ -717,6 +752,12 @@
   background: rgba(229, 72, 77, 0.14);
   border-bottom-color: rgba(229, 72, 77, 0.32);
   color: #ffb0b2;
+}
+
+.room-notice--info {
+  background: rgba(11, 92, 255, 0.14);
+  border-bottom-color: rgba(11, 92, 255, 0.32);
+  color: #9db9ff;
 }
 
 .room-notice__action {
@@ -1329,13 +1370,8 @@
 }
 
 .control--unavailable .control__button {
-  border-color: rgba(245, 181, 68, 0.6);
-  color: #f5b544;
-}
-
-.control--unavailable.control--off .control__button {
-  background: #ffffff;
-  color: #13161c;
+  /* Amber ring reads as "broken device" on top of any base state. */
+  box-shadow: inset 0 0 0 2px rgba(245, 181, 68, 0.9);
 }
 
 .room-popover {
