@@ -118,8 +118,9 @@ export function validateScheduleForm(values: ScheduleValues): FieldError[] {
   }
 
   if (errors.length === 0) {
-    const start = buildStartTimestamp(values.date, values.time);
-    if (start) {
+    const startIso = buildStartTimestamp(values.date, values.time);
+    if (startIso) {
+      const start = new Date(startIso);
       // Allow a small grace period for clocks and double submits.
       if (start.getTime() < Date.now() - 60_000) {
         errors.push({
