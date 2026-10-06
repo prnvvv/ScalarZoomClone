@@ -38,6 +38,7 @@ from app.schemas.websocket import (
     MuteParticipantMessage,
     OfferMessage,
     PingMessage,
+    ReactionMessage,
     RemoveParticipantMessage,
     ScreenShareMessage,
     parse_client_message,
@@ -104,6 +105,7 @@ def test_parse_client_message_accepts_every_contract_type():
         ({"type": "remove_participant", "participant_id": 1, "target_id": 2}, RemoveParticipantMessage),
         ({"type": "end_meeting", "participant_id": 1}, EndMeetingMessage),
         ({"type": "meeting_state", "participant_id": 1}, MeetingStateMessage),
+        ({"type": "reaction", "participant_id": 1, "emoji": "👍"}, ReactionMessage),
         ({"type": "ping"}, PingMessage),
     ]
     for payload, model in cases:
@@ -525,6 +527,50 @@ def test_media_state_and_screen_share_broadcast(client, db):
     share_event = socket_watcher.receive_json()
     assert share_event["type"] == "participant_updated"
     assert share_event["participant"] == {"id": actor.id, "screen_share": True}
+
+    socket_watcher.close()
+    socket_actor.close()
+
+
+@requires_bd1
+def test_reaction_broadcasts_to_others_only(client, db):
+    _seed_meeting(db, MEETING_A)
+    watcher = _create_participant(db, MEETING_A, "Watcher")
+    actor = _create_participant(db, MEETING_A, "Actor")
+
+    socket_watcher, _ = _join(client, MEETING_A, watcher.id, "Watcher")
+    socket_actor, _ = _join(client, MEETING_A, actor.id, "Actor")
+    socket_watcher.receive_json()
+
+    socket_actor.send_json(
+        {"type": "reaction", "participant_id": actor.id, "emoji": "🎉"}
+    )
+
+    reaction = socket_watcher.receive_json()
+    assert reaction == {"type": "reaction", "participant_id": actor.id, "emoji": "🎉"}
+
+    # The sender renders its own reaction locally, so it must not be echoed.
+    socket_watcher.close()
+    socket_actor.close()
+
+
+@requires_bd1
+def test_reaction_cannot_be_sent_for_another_participant(client, db):
+    _seed_meeting(db, MEETING_A)
+    watcher = _create_participant(db, MEETING_A, "Watcher")
+    actor = _create_participant(db, MEETING_A, "Actor")
+
+    socket_watcher, _ = _join(client, MEETING_A, watcher.id, "Watcher")
+    socket_actor, _ = _join(client, MEETING_A, actor.id, "Actor")
+    socket_watcher.receive_json()
+
+    socket_actor.send_json(
+        {"type": "reaction", "participant_id": watcher.id, "emoji": "❤️"}
+    )
+
+    error = socket_actor.receive_json()
+    assert error["type"] == "error"
+    assert error["code"] == "UNAUTHORIZED_ACTION"
 
     socket_watcher.close()
     socket_actor.close()
