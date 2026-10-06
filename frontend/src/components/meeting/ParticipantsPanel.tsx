@@ -8,13 +8,14 @@ import {
   MicIcon,
   MicOffIcon,
   PhoneOffIcon,
+  PinIcon,
   ScreenShareIcon,
   UsersIcon,
   VideoIcon,
   VideoOffIcon,
   XIcon,
 } from "@/components/icons";
-import { buildInviteUrl, copyText, getInitials } from "@/lib/utils";
+import { buildInviteUrl, copyText, cx, getInitials } from "@/lib/utils";
 import type { ParticipantSummary } from "@/types/participant";
 
 interface ParticipantsPanelProps {
@@ -29,6 +30,9 @@ interface ParticipantsPanelProps {
   onRemoveParticipant?: (targetId: number) => void;
   onMuteAll?: () => void;
   onEndMeeting?: () => void;
+  /** Local-only pinned tile (Zoom-style spotlight). */
+  pinnedId?: number | null;
+  onTogglePin?: (participantId: number) => void;
 }
 
 /** Host first, then you, then everyone else alphabetically. */
@@ -69,6 +73,8 @@ export function ParticipantsPanel({
   onRemoveParticipant,
   onMuteAll,
   onEndMeeting,
+  pinnedId = null,
+  onTogglePin,
 }: ParticipantsPanelProps) {
   const { toast } = useToast();
 
@@ -212,9 +218,27 @@ export function ParticipantsPanel({
                   )}
                 </div>
 
-                {canAct && (onMuteParticipant || onRemoveParticipant) ? (
+                {(onTogglePin || (canAct && (onMuteParticipant || onRemoveParticipant))) ? (
                   <div className="participant-row__actions">
-                    {onMuteParticipant ? (
+                    {onTogglePin ? (
+                      <button
+                        type="button"
+                        className={cx(
+                          "room-icon-button",
+                          pinnedId === participant.id && "room-icon-button--active"
+                        )}
+                        aria-pressed={pinnedId === participant.id}
+                        aria-label={
+                          pinnedId === participant.id
+                            ? `Unpin ${participant.display_name}`
+                            : `Pin ${participant.display_name} to the stage`
+                        }
+                        onClick={() => onTogglePin(participant.id)}
+                      >
+                        <PinIcon size={16} />
+                      </button>
+                    ) : null}
+                    {canAct && onMuteParticipant ? (
                       <button
                         type="button"
                         className="room-icon-button"
