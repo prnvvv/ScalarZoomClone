@@ -42,6 +42,9 @@ export const MAX_DISPLAY_NAME_LENGTH = 100;
 export const STORAGE_KEYS = {
   displayName: "scalarmeet.display_name",
   participantId: (meetingId: string) => `scalarmeet.participant.${meetingId}`,
+  audioInput: "scalarmeet.audio_input",
+  videoInput: "scalarmeet.video_input",
+  audioOutput: "scalarmeet.audio_output",
 } as const;
 
 export const APP_NAME = "Scalar Meet";
