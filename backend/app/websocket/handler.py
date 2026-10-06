@@ -25,6 +25,7 @@ from app.schemas.websocket import (
     JoinMessage,
     LeaveMessage,
     MediaStateMessage,
+    MeetingStateMessage,
     MuteParticipantMessage,
     OfferMessage,
     PingMessage,
@@ -153,6 +154,8 @@ async def _dispatch(
             await _handle_signal(websocket, session, manager, db, message)
         elif isinstance(message, IceCandidateMessage):
             await _handle_signal(websocket, session, manager, db, message)
+        elif isinstance(message, MeetingStateMessage):
+            await _handle_meeting_state(websocket, session, manager, db, message)
         elif isinstance(message, MediaStateMessage):
             await _handle_media_state(websocket, session, manager, db, message)
         elif isinstance(message, ScreenShareMessage):
@@ -249,7 +252,7 @@ async def _handle_join(
         }
     )
 
-    await manager.broadcast(
+    await manager.broadcast_except(
         session.meeting_id,
         {
             "type": "participant_joined",
@@ -261,6 +264,7 @@ async def _handle_join(
                 "is_video_on": True,
             },
         },
+        exclude={participant_id},
     )
 
 
@@ -370,6 +374,37 @@ async def _handle_signal(
             ErrorCode.TARGET_NOT_FOUND,
             "Target participant is not connected",
         )
+
+
+async def _handle_meeting_state(
+    websocket: WebSocket,
+    session: RealtimeSession,
+    manager: ConnectionManager,
+    db: Session,
+    message: MeetingStateMessage,
+) -> None:
+    """Send the requesting participant an authoritative snapshot of the meeting."""
+    if message.participant_id != session.participant_id:
+        await _send_error(
+            websocket,
+            ErrorCode.UNAUTHORIZED_ACTION,
+            "Cannot request meeting state for another participant",
+        )
+        return
+
+    participants = await _participants_payload(db, manager, session.meeting_id)
+    connected = await manager.get_meeting_participants(session.meeting_id)
+
+    await websocket.send_json(
+        {
+            "type": "meeting_state",
+            "meeting_id": session.meeting_id,
+            "participant_id": session.participant_id,
+            "is_host": session.is_host,
+            "participants": participants,
+            "connected_participant_ids": connected,
+        }
+    )
 
 
 async def _handle_media_state(
@@ -598,7 +633,10 @@ async def _participants_payload(
     exclude: int | None = None,
 ) -> list[dict]:
     rows = await run_in_threadpool(
-        participant_service.get_meeting_participants, db, meeting_id
+        participant_service.get_meeting_participants,
+        db,
+        meeting_id,
+        active_only=True,
     )
     payload = []
     for row in rows:
