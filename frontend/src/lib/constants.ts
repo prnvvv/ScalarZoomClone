@@ -1,0 +1,47 @@
+/** All backend URLs are derived from these constants. Never inline hosts. */
+
+export const API_BASE_URL = (
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
+).replace(/\/+$/, "");
+
+export const STUN_SERVER =
+  process.env.NEXT_PUBLIC_STUN_SERVER ?? "stun:stun.l.google.com:19302";
+
+export const REST = {
+  me: "/api/users/me",
+  meetings: "/api/meetings",
+  meeting: (meetingId: string) => `/api/meetings/${encodeURIComponent(meetingId)}`,
+  meetingJoin: (meetingId: string) =>
+    `/api/meetings/${encodeURIComponent(meetingId)}/join`,
+  meetingParticipants: (meetingId: string) =>
+    `/api/meetings/${encodeURIComponent(meetingId)}/participants`,
+  participant: (participantId: number) =>
+    `/api/participants/${encodeURIComponent(String(participantId))}`,
+  schedulesUpcoming: "/api/schedules/upcoming",
+  schedulesRecent: "/api/schedules/recent",
+  schedules: "/api/schedules",
+} as const;
+
+/** `http://host:8000` -> `ws://host:8000`, `https://` -> `wss://`. */
+export function toWebSocketUrl(path: string): string {
+  const base = API_BASE_URL.replace(/^http/, "ws");
+  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+export const MEETING_WS_PATH = (meetingId: string) =>
+  `/ws/meetings/${encodeURIComponent(meetingId)}`;
+
+export const REQUEST_TIMEOUT_MS = 12_000;
+
+export const MAX_MEETING_ID_LENGTH = 32;
+export const MAX_TITLE_LENGTH = 255;
+export const MAX_DESCRIPTION_LENGTH = 5000;
+export const MAX_DURATION_MINUTES = 1440;
+export const MAX_DISPLAY_NAME_LENGTH = 100;
+
+export const STORAGE_KEYS = {
+  displayName: "scalarmeet.display_name",
+  participantId: (meetingId: string) => `scalarmeet.participant.${meetingId}`,
+} as const;
+
+export const APP_NAME = "Scalar Meet";
