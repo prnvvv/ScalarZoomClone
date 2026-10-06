@@ -10,7 +10,7 @@ uvicorn[standard]>=0.37
 # DeclarativeBase/Mapped/mapped_column and ConfigDict/StringConstraints/
 # AwareDatetime/model_validate do not exist in the 1.x lines.
 sqlalchemy>=2.0,<3.0
-pydantic>=2.11,<3.0
+pydantic>=2.13.5,<3.0
 
 # Imported directly by app/websocket/handler.py, so it is pinned explicitly
 # rather than inherited transitively from fastapi.
