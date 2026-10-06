@@ -2,17 +2,31 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { useToast } from "@/components/common/ToastProvider";
-import { AlertIcon, CopyIcon, UserIcon } from "@/components/icons";
-import { ControlBar } from "@/components/meeting/ControlBar";
-import { DeviceSelector } from "@/components/meeting/DeviceSelector";
+import { AlertIcon, MicIcon, MicOffIcon, PinIcon, XIcon } from "@/components/icons";
+import { ControlBar, type SettingsTab } from "@/components/meeting/ControlBar";
+import { MeetingSettingsDialog } from "@/components/meeting/MeetingSettingsDialog";
+import { MeetingTopBar } from "@/components/meeting/MeetingTopBar";
+import { ParticipantGrid, type StageTile } from "@/components/meeting/ParticipantGrid";
 import { ParticipantsPanel } from "@/components/meeting/ParticipantsPanel";
-import { VideoTile } from "@/components/meeting/VideoTile";
+import { useActiveSpeakerId } from "@/hooks/useActiveSpeaker";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useFullscreen } from "@/hooks/useFullscreen";
 import { useMeeting } from "@/hooks/useMeeting";
 import { useMeetingRoom } from "@/hooks/useMeetingRoom";
+import {
+  readPinnedParticipant,
+  useRoomPreferences,
+  writePinnedParticipant,
+} from "@/hooks/useRoomPreferences";
 import { STORAGE_KEYS } from "@/lib/constants";
 import {
   buildInviteUrl,
@@ -26,14 +40,6 @@ import type { ParticipantSummary } from "@/types/participant";
 /** sessionStorage is not observable; re-read on any re-render instead. */
 const subscribeToSessionName = () => () => {};
 
-function gridCountClass(count: number): string {
-  if (count <= 1) return "room__grid--count-1";
-  if (count === 2) return "room__grid--count-2";
-  if (count === 3) return "room__grid--count-3";
-  if (count === 4) return "room__grid--count-4";
-  return "room__grid--count-5plus";
-}
-
 function connectionLabel(status: string): string {
   switch (status) {
     case "connected":
@@ -45,6 +51,16 @@ function connectionLabel(status: string): string {
     default:
       return "Connecting…";
   }
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target.tagName === "INPUT" ||
+    target.tagName === "TEXTAREA" ||
+    target.tagName === "SELECT" ||
+    target.isContentEditable
+  );
 }
 
 function RoomScreen({
@@ -80,8 +96,17 @@ export default function MeetingRoomPage() {
     useMeetingRoom(meetingId);
 
   const [panelOpen, setPanelOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   const [confirmEnd, setConfirmEnd] = useState(false);
+  const [pinnedId, setPinnedId] = useState<number | null>(null);
+
+  const prefs = useRoomPreferences();
+  const {
+    ref: roomRef,
+    isFullscreen,
+    supported: fullscreenSupported,
+    toggle: toggleFullscreen,
+  } = useFullscreen<HTMLDivElement>();
 
   const storedName = useSyncExternalStore(
     subscribeToSessionName,
@@ -91,6 +116,33 @@ export default function MeetingRoomPage() {
   const localName = storedName || user?.name || "You";
 
   const session = useMeeting({ meeting, meetingId, displayName: localName });
+  const settingsOpen = settingsTab !== null;
+
+  // Restore the pinned participant once we are in the browser (deferred so
+  // hydration sees the same value the server rendered).
+  useEffect(() => {
+    const stored = readPinnedParticipant(meetingId);
+    if (stored === null) return;
+    const timer = window.setTimeout(() => setPinnedId(stored), 0);
+    return () => window.clearTimeout(timer);
+  }, [meetingId]);
+
+  const togglePin = useCallback(
+    (participantId: number) => {
+      setPinnedId((current) => {
+        const next = current === participantId ? null : participantId;
+        writePinnedParticipant(meetingId, next);
+        return next;
+      });
+    },
+    [meetingId]
+  );
+
+  const activeSpeakerId = useActiveSpeakerId({
+    selfId: session.selfId,
+    localStream: session.localStream,
+    remoteStreams: session.remoteStreams,
+  });
 
   const copyInvite = async () => {
     const ok = await copyText(buildInviteUrl(meetingId));
@@ -105,28 +157,15 @@ export default function MeetingRoomPage() {
     router.push("/dashboard");
   };
 
-  const openSettings = () => {
-    setSettingsOpen((open) => !open);
+  const openSettings = useCallback((tab: SettingsTab) => {
+    setSettingsTab(tab);
     setPanelOpen(false);
-  };
+  }, []);
 
-  const toggleParticipants = () => {
+  const toggleParticipants = useCallback(() => {
     setPanelOpen((open) => !open);
-    setSettingsOpen(false);
-  };
-
-  // One overlay at a time; Escape closes whichever is open.
-  useEffect(() => {
-    if (!panelOpen && !settingsOpen && !confirmEnd) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setPanelOpen(false);
-      setSettingsOpen(false);
-      setConfirmEnd(false);
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [panelOpen, settingsOpen, confirmEnd]);
+    setSettingsTab(null);
+  }, []);
 
   const endMeetingForAll = session.endMeeting;
   const muteEveryone = session.muteAll;
@@ -140,6 +179,68 @@ export default function MeetingRoomPage() {
     muteEveryone();
     toast("Asked everyone to mute", "success");
   }, [muteEveryone, toast]);
+
+  // One overlay at a time; Escape closes whichever is open.
+  useEffect(() => {
+    if (!panelOpen && !settingsOpen && !confirmEnd) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setPanelOpen(false);
+      setSettingsTab(null);
+      setConfirmEnd(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [panelOpen, settingsOpen, confirmEnd]);
+
+  // Room shortcuts: M mute, V video, P participants, F fullscreen.
+  const joined = session.phase === "joined";
+  const { toggleMute, toggleVideo } = session;
+  useEffect(() => {
+    if (!joined) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (isTypingTarget(event.target)) return;
+      if (settingsTab !== null || confirmEnd) return;
+      const key = event.key.toLowerCase();
+      if (key === "m") {
+        event.preventDefault();
+        toggleMute();
+      } else if (key === "v") {
+        event.preventDefault();
+        toggleVideo();
+      } else if (key === "p") {
+        event.preventDefault();
+        setPanelOpen((open) => !open);
+      } else if (key === "f" && fullscreenSupported) {
+        event.preventDefault();
+        toggleFullscreen();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [
+    joined,
+    settingsTab,
+    confirmEnd,
+    toggleMute,
+    toggleVideo,
+    fullscreenSupported,
+    toggleFullscreen,
+  ]);
+
+  const reactionsByParticipant = useMemo(() => {
+    const grouped = new Map<number, string[]>();
+    for (const reaction of session.reactions) {
+      const list = grouped.get(reaction.participantId);
+      if (list) {
+        list.push(reaction.emoji);
+      } else {
+        grouped.set(reaction.participantId, [reaction.emoji]);
+      }
+    }
+    return grouped;
+  }, [session.reactions]);
 
   if (loading) {
     return (
@@ -281,54 +382,102 @@ export default function MeetingRoomPage() {
     if (session.selfId !== null) return participant.id !== session.selfId;
     return participant.display_name !== localName;
   });
-  const tileCount = 1 + others.length;
   const scheduledNotice = meeting.status === "scheduled";
   const connectionLost =
     session.phase === "joined" && session.connection === "disconnected";
 
-  return (
-    <div className="room">
-      <span className="visually-hidden" role="status" aria-live="polite">
-        {`${connectionLabel(session.connection)}. ${participants.length} in the meeting.`}
-      </span>
+  const selfKey = session.selfId ?? -1;
+  const tiles: StageTile[] = [
+    {
+      id: selfKey,
+      name: localName,
+      isMuted: session.isMuted,
+      isHost: isLocalHost,
+      isVideoOn: session.isVideoOn,
+      isScreenShare: session.isScreenSharing ?? false,
+      stream: session.isScreenSharing
+        ? (session.screenShareStream ?? session.localStream)
+        : session.localStream,
+      reactions: reactionsByParticipant.get(selfKey) ?? [],
+      isSelf: true,
+    },
+    ...others.map((participant) => ({
+      id: participant.id,
+      name: participant.display_name,
+      isMuted: participant.is_muted,
+      isHost: participant.is_host,
+      isVideoOn: participant.is_video_on,
+      isScreenShare: participant.screen_share ?? false,
+      stream: session.remoteStreams[participant.id] ?? null,
+      reactions: reactionsByParticipant.get(participant.id) ?? [],
+      isSelf: false,
+    })),
+  ];
 
-      <header className="room__header">
-        <div className="room__heading">
-          <div className="room__title">{meeting.title}</div>
-          <div className="room__subtitle">
-            <span className="room__id">{meeting.meeting_id}</span>
-            <span>
-              {formatDateShort(meeting.start_time)} ·{" "}
-              {formatTime(meeting.start_time)}
-            </span>
-            <span
-              className={cx(
-                "room__connection",
-                session.connection === "reconnecting" &&
-                  "room__connection--reconnecting",
-                session.connection === "disconnected" &&
-                  "room__connection--failed"
-              )}
-            >
-              {connectionLabel(session.connection)}
-            </span>
-          </div>
-        </div>
-        <div className="room__header-actions">
-          {meeting.status === "active" ? (
-            <span className="room__chip room__chip--live">Live</span>
-          ) : null}
+  const renderTileMenu = (tile: StageTile) => (
+    <div className="tile__menu-actions">
+      <button
+        type="button"
+        className="tile__menu-button"
+        aria-pressed={pinnedId === tile.id}
+        aria-label={
+          pinnedId === tile.id
+            ? `Unpin ${tile.name}`
+            : `Pin ${tile.name} to the stage`
+        }
+        onClick={() => togglePin(tile.id)}
+      >
+        <PinIcon size={15} />
+        {pinnedId === tile.id ? "Unpin" : "Pin"}
+      </button>
+      {session.isHost && !tile.isSelf ? (
+        <>
           <button
             type="button"
-            className="room__chip room__chip--hide-mobile"
-            onClick={() => void copyInvite()}
-            aria-label="Copy invite link"
+            className="tile__menu-button"
+            aria-label={
+              tile.isMuted
+                ? `Ask ${tile.name} to unmute`
+                : `Mute ${tile.name}`
+            }
+            onClick={() => session.muteParticipant(tile.id, !tile.isMuted)}
           >
-            <CopyIcon size={14} />
-            Copy invite
+            {tile.isMuted ? <MicIcon size={15} /> : <MicOffIcon size={15} />}
+            {tile.isMuted ? "Unmute" : "Mute"}
           </button>
-        </div>
-      </header>
+          <button
+            type="button"
+            className="tile__menu-button tile__menu-button--danger"
+            aria-label={`Remove ${tile.name} from the meeting`}
+            onClick={() => session.removeParticipant(tile.id)}
+          >
+            <XIcon size={15} />
+            Remove
+          </button>
+        </>
+      ) : null}
+    </div>
+  );
+
+  return (
+    <div className={cx("room", panelOpen && "room--panel")} ref={roomRef}>
+      <span className="visually-hidden" role="status" aria-live="polite">
+        {`${connectionLabel(session.connection)}. ${roster.length} in the meeting.`}
+      </span>
+
+      <MeetingTopBar
+        title={meeting.title}
+        meetingId={meeting.meeting_id}
+        connection={session.connection}
+        participantCount={roster.length}
+        isLive={meeting.status === "active"}
+        participantsOpen={panelOpen}
+        isFullscreen={isFullscreen}
+        fullscreenSupported={fullscreenSupported}
+        onToggleParticipants={toggleParticipants}
+        onCopyInvite={() => void copyInvite()}
+        onToggleFullscreen={toggleFullscreen}
+      />
 
       {scheduledNotice ? (
         <div className="room-notice">
@@ -360,88 +509,60 @@ export default function MeetingRoomPage() {
       ) : null}
 
       <main className="room__stage">
-        <div className={cx("room__grid", gridCountClass(tileCount))}>
-          <VideoTile
-            name={`${localName} (You)`}
-            isMuted={session.isMuted}
-            isHost={isLocalHost}
-            stream={session.localStream}
-            isVideoOn={session.isVideoOn}
-            videoMuted
-          />
-
-          {others.map((participant) => (
-            <VideoTile
-              key={participant.id}
-              name={participant.display_name}
-              isMuted={participant.is_muted}
-              isHost={participant.is_host}
-              stream={session.remoteStreams[participant.id]}
-              isVideoOn={participant.is_video_on}
-            />
-          ))}
-
-          {others.length === 0 ? (
-            <div className="tile">
-              <div className="tile__placeholder">
-                <div className="tile__avatar">
-                  <UserIcon size={24} />
-                </div>
-              </div>
-              <span className="tile__name">Waiting for others…</span>
-            </div>
-          ) : null}
-        </div>
+        <ParticipantGrid
+          tiles={tiles}
+          layout={prefs.preferences.layout}
+          screenLayout={prefs.preferences.screenLayout}
+          activeSpeakerId={activeSpeakerId}
+          pinnedId={pinnedId}
+          mirroredSelf={prefs.preferences.mirrorSelf}
+          videoFit={prefs.preferences.videoFit}
+          renderMenu={renderTileMenu}
+        />
       </main>
 
       <ControlBar
         isMuted={session.isMuted}
         isVideoOn={session.isVideoOn}
+        audioAvailable={session.audioAvailable}
+        videoAvailable={session.videoAvailable}
         participantsOpen={panelOpen}
-        settingsOpen={settingsOpen}
         isScreenSharing={session.isScreenSharing}
+        isHost={session.isHost}
+        layout={prefs.preferences.layout}
+        isFullscreen={isFullscreen}
+        fullscreenSupported={fullscreenSupported}
+        devices={session.devices}
         onToggleMute={session.toggleMute}
         onToggleVideo={session.toggleVideo}
         onToggleParticipants={toggleParticipants}
-        onToggleSettings={openSettings}
         onToggleScreenShare={session.toggleScreenShare}
+        onReact={session.sendReaction}
+        onSetLayout={prefs.setLayout}
+        onOpenSettings={openSettings}
+        onToggleFullscreen={toggleFullscreen}
+        onCopyInvite={() => void copyInvite()}
+        onMuteAll={session.isHost ? muteAll : undefined}
+        onEndMeeting={session.isHost ? () => setConfirmEnd(true) : undefined}
         onLeave={leaveRoom}
       />
 
-      {settingsOpen ? (
-        <>
-          <div
-            className="room-panel__backdrop"
-            onClick={() => setSettingsOpen(false)}
-            aria-hidden="true"
-          />
-          <div
-            className="room-settings"
-            role="dialog"
-            aria-label="Meeting settings"
-          >
-            <h2 className="room-settings__title">Audio and video</h2>
-            <DeviceSelector
-              audioInputDevices={session.devices.audioInputDevices}
-              videoInputDevices={session.devices.videoInputDevices}
-              audioOutputDevices={session.devices.audioOutputDevices}
-              selectedAudioInputId={session.devices.selectedAudioInputId}
-              selectedVideoInputId={session.devices.selectedVideoInputId}
-              selectedAudioOutputId={session.devices.selectedAudioOutputId}
-              canSelectSpeaker={session.devices.canSelectSpeaker}
-              disabled={session.phase !== "joined"}
-              onAudioInputChange={session.devices.setAudioInput}
-              onVideoInputChange={session.devices.setVideoInput}
-              onAudioOutputChange={session.devices.setAudioOutput}
-            />
-            <p className="room-settings__hint">
-              {session.phase === "joined"
-                ? "Changes apply to everyone in the meeting."
-                : "Devices unlock once you are connected to the meeting."}
-            </p>
-          </div>
-        </>
-      ) : null}
+      <MeetingSettingsDialog
+        open={settingsOpen}
+        tab={settingsTab ?? "general"}
+        onTabChange={setSettingsTab}
+        devices={session.devices}
+        preferences={prefs.preferences}
+        localStream={session.localStream}
+        isFullscreen={isFullscreen}
+        fullscreenSupported={fullscreenSupported}
+        onSetLayout={prefs.setLayout}
+        onSetScreenLayout={prefs.setScreenLayout}
+        onSetMirrorSelf={prefs.setMirrorSelf}
+        onSetVideoFit={prefs.setVideoFit}
+        onToggleFullscreen={toggleFullscreen}
+        onClose={() => setSettingsTab(null)}
+      />
 
       {panelOpen ? (
         <>
@@ -456,6 +577,8 @@ export default function MeetingRoomPage() {
             localName={localName}
             isHost={session.isHost}
             selfId={session.selfId}
+            pinnedId={pinnedId}
+            onTogglePin={togglePin}
             onClose={() => setPanelOpen(false)}
             onMuteParticipant={
               session.isHost ? session.muteParticipant : undefined
