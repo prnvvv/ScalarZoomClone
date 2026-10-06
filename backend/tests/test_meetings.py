@@ -16,7 +16,7 @@ from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -79,6 +79,13 @@ def db():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+
+    @event.listens_for(engine, "connect")
+    def _enable_foreign_keys(dbapi_connection, _record) -> None:
+        # SQLite ignores foreign keys unless enabled per connection, exactly
+        # as app.database.database does for the real engine.
+        dbapi_connection.execute("PRAGMA foreign_keys=ON")
+
     Base.metadata.create_all(engine)
     TestingSession = sessionmaker(
         bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
@@ -636,3 +643,54 @@ def test_schema_matches_existing_sqlite_tables():
         assert connection.execute(text("PRAGMA foreign_keys")).scalar() in (0, 1)
 
     engine.dispose()
+
+# --------------------------------------------------------------------------
+# History protects the meeting row from physical deletion (regression guard)
+# --------------------------------------------------------------------------
+
+
+def test_meeting_with_history_cannot_be_deleted(db, meeting):
+    """Regression: the ORM nulled the child FK and failed with NOT NULL.
+
+    The FK is RESTRICT, so the delete must be refused by the database and both
+    the meeting and its history row must survive untouched.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    history_service.record_meeting_start(db, meeting)
+    db.commit()
+
+    db.delete(meeting)
+    with pytest.raises(IntegrityError):
+        db.commit()
+    db.rollback()
+
+    assert meeting_service.get_meeting(db, meeting.meeting_id) is not None
+    assert history_service.get_history(db, meeting) is not None
+
+
+def test_meeting_without_history_deletes_participants(db):
+    """A meeting with no history row still cascades to its participants."""
+    from app.models.meeting import Meeting, MeetingStatus
+    from app.models.participant import Participant
+    from app.services import participant_service
+
+    bare = Meeting(
+        meeting_id="700000001",
+        host_id=DEMO_USER_ID,
+        title="No history",
+        start_time=utc_now(),
+        status=MeetingStatus.ACTIVE,
+        meeting_link="http://localhost:3000/meetings/700000001",
+    )
+    db.add(bare)
+    db.commit()
+    db.refresh(bare)
+
+    participant_service.create_participant(
+        db, meeting_id=bare.id, display_name="Ann"
+    )
+    db.delete(bare)
+    db.commit()
+
+    assert db.query(Participant).filter(Participant.display_name == "Ann").count() == 0
