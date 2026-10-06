@@ -20,7 +20,7 @@ class Settings:
         )
         self.frontend_url: str = os.getenv(
             "FRONTEND_URL",
-            "http://localhost:3000",
+            "http://localhost:3000,http://192.168.1.10:3000",
         )
         self.stun_server: str = os.getenv(
             "STUN_SERVER",
