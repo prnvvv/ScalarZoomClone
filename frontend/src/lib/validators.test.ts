@@ -9,22 +9,37 @@ import {
 } from "./validators";
 
 describe("isValidMeetingId", () => {
-  it("accepts alphanumeric ids up to 32 characters", () => {
+  it("accepts exactly nine digits", () => {
     expect(isValidMeetingId("839452761")).toBe(true);
-    expect(isValidMeetingId("abc-DEF_123")).toBe(true);
-    expect(isValidMeetingId("a".repeat(32))).toBe(true);
+    expect(isValidMeetingId("100000000")).toBe(true);
+    expect(isValidMeetingId("999999999")).toBe(true);
   });
 
   it("trims surrounding whitespace", () => {
     expect(isValidMeetingId("  839452761  ")).toBe(true);
   });
 
-  it("rejects empty, over-long and unsafe values", () => {
+  it("rejects a leading zero, exactly as the server does", () => {
+    expect(isValidMeetingId("000000001")).toBe(false);
+    expect(isValidMeetingId("012345678")).toBe(false);
+  });
+
+  it("rejects the wrong digit count", () => {
     expect(isValidMeetingId("")).toBe(false);
     expect(isValidMeetingId("   ")).toBe(false);
-    expect(isValidMeetingId("a".repeat(33))).toBe(false);
+    expect(isValidMeetingId("123")).toBe(false);
+    expect(isValidMeetingId("12345678")).toBe(false);
+    expect(isValidMeetingId("1234567890")).toBe(false);
+  });
+
+  it("rejects non-numeric ids the server would 400 on", () => {
+    expect(isValidMeetingId("abc")).toBe(false);
+    expect(isValidMeetingId("abcdefghi")).toBe(false);
+    expect(isValidMeetingId("AAAAAAAAAAAAAAA")).toBe(false);
+    expect(isValidMeetingId("abc-DEF_123")).toBe(false);
     expect(isValidMeetingId("has space")).toBe(false);
     expect(isValidMeetingId("slash/here")).toBe(false);
+    expect(isValidMeetingId("8394527619")).toBe(false);
   });
 });
 
@@ -41,20 +56,27 @@ describe("extractMeetingId", () => {
   });
 
   it("ignores the query string", () => {
-    expect(extractMeetingId("https://x.com/meetings/abc?tab=people")).toBe(
-      "abc"
+    expect(extractMeetingId("https://x.com/meetings/839452761?tab=people")).toBe(
+      "839452761"
     );
   });
 
   it("extracts from a bare path", () => {
-    expect(extractMeetingId("/meetings/xyz")).toBe("xyz");
-    expect(extractMeetingId("join/meetings/xyz/")).toBe("xyz");
+    expect(extractMeetingId("/meetings/839452761")).toBe("839452761");
+    expect(extractMeetingId("join/meetings/839452761/")).toBe("839452761");
   });
 
   it("returns an empty string for unusable input", () => {
     expect(extractMeetingId("")).toBe("");
     expect(extractMeetingId("not a valid id")).toBe("");
     expect(extractMeetingId("https://example.com/nothing")).toBe("");
+  });
+
+  it("does not treat a longer number as an id", () => {
+    expect(extractMeetingId("12345678901")).toBe(
+      "12345678901"
+    );
+    expect(isValidMeetingId(extractMeetingId("12345678901"))).toBe(false);
   });
 });
 
