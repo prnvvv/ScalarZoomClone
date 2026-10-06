@@ -313,9 +313,11 @@ async def _resolve_participant(
         db,
         meeting_id=meeting_pk,
         display_name=display_name,
-        is_host=False,
+        is_host=not await run_in_threadpool(
+            participant_service.has_host_participant, db, meeting_pk
+        ),
     )
-    return created.id, False
+    return created.id, created.is_host
 
 
 async def _handle_leave(
