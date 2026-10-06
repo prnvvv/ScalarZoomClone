@@ -436,6 +436,124 @@
   gap: 10px;
 }
 
+.room-panel__empty {
+  padding: 22px 12px;
+  text-align: center;
+  color: var(--room-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.room-panel__hostbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--room-border);
+  background: var(--room-surface-alt);
+}
+
+.room-panel__hostbar-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--room-text-secondary);
+}
+
+.room-panel__hostbar-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.room-panel__invite {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 4px 4px 12px;
+  border: 1px solid var(--room-border);
+  border-radius: var(--radius-md);
+  background: var(--room-surface-alt);
+}
+
+.room-panel__invite-label {
+  font-size: var(--text-xs);
+  color: var(--room-text-secondary);
+}
+
+.room-panel__invite-value {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Room settings (device choice) --------------------------------------- */
+
+.room-settings {
+  position: fixed;
+  left: 50%;
+  /* Sits directly above the control bar. */
+  bottom: 96px;
+  z-index: 96;
+  width: min(340px, 92vw);
+  padding: 18px;
+  border-radius: var(--radius-lg);
+  background: var(--room-surface);
+  border: 1px solid var(--room-border);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+  transform: translateX(-50%);
+  animation: panel-in 160ms ease;
+}
+
+.room-settings__title {
+  margin-bottom: 14px;
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--room-text);
+}
+
+.room-settings__hint {
+  margin-top: 12px;
+  font-size: var(--text-xs);
+  color: var(--room-text-secondary);
+}
+
+.room-device {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.room-device__field {
+  gap: 6px;
+}
+
+.room-device__field .field__label {
+  color: var(--room-text-secondary);
+}
+
+.room-device__select {
+  background: var(--room-surface-alt);
+  border-color: var(--room-border);
+  color: var(--room-text);
+}
+
+.room-device__select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Participant rows ---------------------------------------------------- */
+
 .participant-row {
   display: flex;
   align-items: center;
@@ -446,6 +564,21 @@
 
 .participant-row:hover {
   background: var(--room-surface-alt);
+}
+
+.participant-row__avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 50%;
+  background: #3a4150;
+  color: #fff;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
 }
 
 .participant-row__body {
@@ -460,14 +593,52 @@
   font-size: var(--text-base);
   color: var(--room-text);
   overflow: hidden;
+}
+
+.participant-row__name > span:first-child {
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.participant-row__badge {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.participant-row__badge--muted {
+  background: var(--room-surface-alt);
+  border: 1px solid var(--room-border);
+  color: var(--room-text-secondary);
 }
 
 .participant-row__meta {
   font-size: var(--text-xs);
   color: var(--room-text-secondary);
   margin-top: 2px;
+}
+
+.participant-row__indicators {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--room-text-secondary);
+}
+
+.participant-row__indicator {
+  display: inline-flex;
+  color: #ff9a9d;
+}
+
+.participant-row__indicator--on {
+  color: var(--room-text-secondary);
 }
 
 .participant-row__actions {
@@ -617,6 +788,24 @@
     height: auto;
     aspect-ratio: 16 / 9;
   }
+
+  /* Hover-revealed actions are unreachable on touch devices. */
+  .participant-row__actions {
+    opacity: 1;
+  }
+
+  .room-panel__hostbar {
+    padding: 10px 12px;
+  }
+
+  .room-panel__hostbar-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .room-settings {
+    bottom: 84px;
+  }
 }
 
 @media (max-width: 640px) {
@@ -636,12 +825,43 @@
   }
 
   .control {
-    min-width: 56px;
+    min-width: 0;
     font-size: 10px;
   }
 
   .control__button {
     width: 44px;
     height: 44px;
+  }
+
+  /* Icons only — the toolbar must fit 320px without wrapping. */
+  .control__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .room-panel {
+    width: 100%;
+    border-left: none;
+  }
+
+  .room-settings {
+    width: calc(100% - 24px);
+    bottom: 80px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .room-panel,
+  .room-panel__backdrop,
+  .room-settings,
+  .control__button,
+  .tile {
+    animation: none;
+    transition: none;
   }
 }
