@@ -44,6 +44,23 @@ function sendersOfKind(pc: RTCPeerConnection, kind: string): RTCRtpSender[] {
     });
 }
 
+/**
+ * How a screen-share attempt ended:
+ * - `started` / `stopped` — state changed and peers were informed.
+ * - `cancelled` — the picker was dismissed or permission denied; nothing
+ *   changed and the meeting keeps running.
+ * - `unsupported` — no `getDisplayMedia` (insecure context or old browser).
+ * - `busy` — a share is already live or another attempt is in flight.
+ * - `error` — an unexpected failure; the meeting is unaffected.
+ */
+export type ScreenShareResult =
+  | "started"
+  | "stopped"
+  | "cancelled"
+  | "unsupported"
+  | "busy"
+  | "error";
+
 export interface WebRtcState {
   remoteStreams: Record<number, MediaStream>;
   /** Create peers for the connected set; offers when we are the lower id. */
@@ -52,11 +69,11 @@ export interface WebRtcState {
   closePeer: (peerId: number) => void;
   resetPeers: () => void;
   /**
-   * Ask the browser for screen/window/tab capture. Resolves `true` only when
-   * a usable video track was acquired — a cancelled picker resolves `false`
-   * and leaves every piece of state untouched.
+   * Ask the browser for screen/window/tab capture. Resolves `started` only
+   * when a usable video track was acquired — a cancelled picker resolves
+   * `cancelled` and leaves every piece of state untouched.
    */
-  startScreenShare: () => Promise<boolean>;
+  startScreenShare: () => Promise<ScreenShareResult>;
   /** Stop screen sharing and restore the camera track. Safe to call twice. */
   stopScreenShare: () => void;
   isScreenSharing: boolean;
@@ -85,6 +102,7 @@ export function useWebRTC({
 
   const cameraTrackRef = useRef<MediaStreamTrack | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
+  const sharePendingRef = useRef(false);
   const onScreenShareStoppedRef = useRef(onScreenShareStopped);
 
   useEffect(() => {
@@ -284,12 +302,22 @@ export function useWebRTC({
   useEffect(() => {
     if (!localStream) return;
     const cameraTrack = localStream.getVideoTracks()[0] ?? null;
-    if (screenStreamRef.current) {
-      cameraTrackRef.current = cameraTrack;
-      return;
-    }
     cameraTrackRef.current = cameraTrack;
     for (const { pc } of peersRef.current.values()) {
+      if (screenStreamRef.current) {
+        // The screen owns the video sender until sharing ends; only the
+        // remembered camera is refreshed for the eventual restore. Audio
+        // still attaches (e.g. Join Audio while already sharing).
+        for (const track of localStream.getAudioTracks()) {
+          const [sender] = sendersOfKind(pc, "audio");
+          if (sender) {
+            void sender.replaceTrack(track).catch(() => undefined);
+          } else {
+            pc.addTrack(track, localStream);
+          }
+        }
+        continue;
+      }
       for (const track of localStream.getTracks()) {
         const [sender] = sendersOfKind(pc, track.kind);
         if (sender) {
@@ -326,46 +354,58 @@ export function useWebRTC({
     setIsScreenSharing(false);
   }, [replaceVideoTrack]);
 
-  const startScreenShare = useCallback(async (): Promise<boolean> => {
-    if (screenStreamRef.current) return false;
+  const startScreenShare = useCallback(async (): Promise<ScreenShareResult> => {
+    // A second click while the picker or a previous attempt is in flight
+    // must not open another picker or leak a stream.
+    if (screenStreamRef.current || sharePendingRef.current) return "busy";
     if (
       typeof navigator === "undefined" ||
       typeof navigator.mediaDevices?.getDisplayMedia !== "function"
     ) {
-      return false;
+      return "unsupported";
     }
 
-    let display: MediaStream;
+    sharePendingRef.current = true;
     try {
-      display = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: false,
-      });
-    } catch {
-      // Picker cancelled or permission denied: nothing changed yet.
-      return false;
+      let display: MediaStream;
+      try {
+        display = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: false,
+        });
+      } catch (cause: unknown) {
+        // Chrome reports both a dismissed picker and a denied permission as
+        // NotAllowedError; either way nothing changed yet.
+        const name = cause instanceof Error ? cause.name : "";
+        if (name === "NotAllowedError" || name === "AbortError") {
+          return "cancelled";
+        }
+        return "error";
+      }
+
+      const screenTrack = display.getVideoTracks()[0];
+      if (!screenTrack) {
+        display.getTracks().forEach((track) => track.stop());
+        return "error";
+      }
+
+      cameraTrackRef.current = localStream?.getVideoTracks()[0] ?? null;
+      screenStreamRef.current = display;
+      setScreenStream(display);
+      replaceVideoTrack(screenTrack);
+      setIsScreenSharing(true);
+
+      // Stopping from the browser's own floating bar must look identical to
+      // stopping from the app: restore the camera and tell the session.
+      screenTrack.onended = () => {
+        if (screenStreamRef.current !== display) return;
+        stopScreenShare();
+        onScreenShareStoppedRef.current?.();
+      };
+      return "started";
+    } finally {
+      sharePendingRef.current = false;
     }
-
-    const screenTrack = display.getVideoTracks()[0];
-    if (!screenTrack) {
-      display.getTracks().forEach((track) => track.stop());
-      return false;
-    }
-
-    cameraTrackRef.current = localStream?.getVideoTracks()[0] ?? null;
-    screenStreamRef.current = display;
-    setScreenStream(display);
-    replaceVideoTrack(screenTrack);
-    setIsScreenSharing(true);
-
-    // Stopping from the browser's own floating bar must look identical to
-    // stopping from the app: restore the camera and tell the session.
-    screenTrack.onended = () => {
-      if (screenStreamRef.current !== display) return;
-      stopScreenShare();
-      onScreenShareStoppedRef.current?.();
-    };
-    return true;
   }, [localStream, replaceVideoTrack, stopScreenShare]);
 
   return {
