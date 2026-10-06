@@ -77,12 +77,14 @@
 }
 
 .action-tile__label {
+  display: block;
   font-size: var(--text-md);
   font-weight: 600;
   color: var(--color-text);
 }
 
 .action-tile__hint {
+  display: block;
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
   margin-top: 2px;
