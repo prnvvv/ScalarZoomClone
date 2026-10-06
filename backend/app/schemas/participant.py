@@ -12,7 +12,12 @@ class ParticipantBase(BaseModel):
 
 
 class ParticipantCreate(ParticipantBase):
-    user_id: int | None = None
+    """Payload for creating a participant.
+
+    ``user_id`` is deliberately absent: ``Participant`` has no user link, so
+    there is nothing for a client to supply. Host status is derived
+    server-side from ``Meeting.host_id``.
+    """
 
 
 class ParticipantUpdate(BaseModel):
