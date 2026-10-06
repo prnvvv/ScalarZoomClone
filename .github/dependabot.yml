@@ -75,3 +75,8 @@ updates:
       - dependency-name: "eslint-config-next"
         update-types:
           - "version-update:semver-major"
+      # eslint 10 breaks eslint-plugin-react (used by eslint-config-next):
+      # `context.getFilename is not a function` crashes every lint run.
+      - dependency-name: "eslint"
+        update-types:
+          - "version-update:semver-major"
