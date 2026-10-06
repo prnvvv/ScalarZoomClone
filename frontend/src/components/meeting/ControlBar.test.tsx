@@ -10,6 +10,7 @@ function renderBar(overrides: Partial<Parameters<typeof ControlBar>[0]> = {}) {
     onToggleVideo: vi.fn(),
     onToggleParticipants: vi.fn(),
     onLeave: vi.fn(),
+    onToggleScreenShare: vi.fn(),
   };
   render(
     <ControlBar
@@ -51,9 +52,19 @@ describe("ControlBar", () => {
     expect(onToggleParticipants).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps screen share disabled until the realtime layer is wired", () => {
-    renderBar();
-    const share = screen.getByRole("button", { name: "Share screen (not connected yet)" });
-    expect((share as HTMLButtonElement).disabled).toBe(true);
+  it("toggles screen sharing when handler provided", () => {
+    const onToggleScreenShare = vi.fn();
+    renderBar({ onToggleScreenShare });
+    const share = screen.getByRole("button", { name: "Share screen" });
+    expect((share as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(share);
+    expect(onToggleScreenShare).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows stop sharing state when active", () => {
+    renderBar({ onToggleScreenShare: vi.fn(), isScreenSharing: true });
+    const share = screen.getByRole("button", { name: "Stop sharing screen" });
+    expect((share as HTMLButtonElement).disabled).toBe(false);
   });
 });
