@@ -5,6 +5,7 @@ import {
   MicOffIcon,
   PhoneOffIcon,
   ScreenShareIcon,
+  SettingsIcon,
   UsersIcon,
   VideoIcon,
   VideoOffIcon,
@@ -19,6 +20,9 @@ interface ControlBarProps {
   onToggleVideo: () => void;
   onToggleParticipants: () => void;
   onLeave: () => void;
+  /** Room settings popover (camera / microphone / speaker choice). */
+  settingsOpen?: boolean;
+  onToggleSettings?: () => void;
 }
 
 /** Bottom control strip of the meeting room. */
@@ -30,6 +34,8 @@ export function ControlBar({
   onToggleVideo,
   onToggleParticipants,
   onLeave,
+  settingsOpen = false,
+  onToggleSettings,
 }: ControlBarProps) {
   return (
     <div className="room__controls" role="toolbar" aria-label="Meeting controls">
@@ -43,7 +49,9 @@ export function ControlBar({
         <span className="control__button">
           {isMuted ? <MicOffIcon size={20} /> : <MicIcon size={20} />}
         </span>
-        {isMuted ? "Unmute" : "Mute"}
+        <span className="control__label">
+          {isMuted ? "Unmute" : "Mute"}
+        </span>
       </button>
 
       <button
@@ -56,7 +64,9 @@ export function ControlBar({
         <span className="control__button">
           {isVideoOn ? <VideoIcon size={20} /> : <VideoOffIcon size={20} />}
         </span>
-        {isVideoOn ? "Stop video" : "Start video"}
+        <span className="control__label">
+          {isVideoOn ? "Stop video" : "Start video"}
+        </span>
       </button>
 
       <button
@@ -69,7 +79,7 @@ export function ControlBar({
         <span className="control__button">
           <ScreenShareIcon size={20} />
         </span>
-        Share
+        <span className="control__label">Share</span>
       </button>
 
       <button
@@ -82,8 +92,24 @@ export function ControlBar({
         <span className="control__button">
           <UsersIcon size={20} />
         </span>
-        People
+        <span className="control__label">People</span>
       </button>
+
+      {onToggleSettings ? (
+        <button
+          type="button"
+          className={cx("control", settingsOpen && "control--active")}
+          aria-pressed={settingsOpen}
+          aria-label="Open meeting settings"
+          aria-expanded={settingsOpen}
+          onClick={onToggleSettings}
+        >
+          <span className="control__button">
+            <SettingsIcon size={20} />
+          </span>
+          <span className="control__label">Settings</span>
+        </button>
+      ) : null}
 
       <button
         type="button"
@@ -94,7 +120,7 @@ export function ControlBar({
         <span className="control__button">
           <PhoneOffIcon size={20} />
         </span>
-        Leave
+        <span className="control__label">Leave</span>
       </button>
     </div>
   );
