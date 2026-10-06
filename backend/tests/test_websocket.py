@@ -888,3 +888,92 @@ def test_host_mute_is_persisted_and_can_be_lifted(client, db):
 
     socket_host.close()
     socket_guest.close()
+
+
+@requires_bd1
+def test_first_participant_to_join_becomes_host(client, db):
+    """The host is assigned by the server, on the real join path.
+
+    Every other host test pre-seeds a participant row with ``is_host=True``,
+    which hides the fact that a brand-new joiner never became host: host
+    controls (mute, remove, end) were unreachable for everyone.
+    """
+    _seed_meeting(db, MEETING_A)
+
+    socket_host, response = _join(client, MEETING_A, None, "First")
+    assert response["type"] == "joined"
+    host_id = response["participant_id"]
+
+    socket_host.send_json({"type": "meeting_state", "participant_id": host_id})
+    state = socket_host.receive_json()
+    assert state["type"] == "meeting_state"
+    assert state["is_host"] is True, "first joiner must be the host"
+
+
+@requires_bd1
+def test_second_participant_is_not_host(client, db):
+    _seed_meeting(db, MEETING_A)
+
+    _join(client, MEETING_A, None, "First")
+    socket_second, second = _join(client, MEETING_A, None, "Second")
+
+    socket_second.send_json(
+        {
+            "type": "meeting_state",
+            "participant_id": second["participant_id"],
+        }
+    )
+    state = socket_second.receive_json()
+    assert state["is_host"] is False, "only one participant may host"
+
+
+@requires_bd1
+def test_first_joiner_can_end_the_meeting(client, db):
+    """End-to-end proof that host controls are reachable."""
+    _seed_meeting(db, MEETING_A)
+
+    socket_host, response = _join(client, MEETING_A, None, "First")
+    host_id = response["participant_id"]
+
+    socket_guest = _socket_stack(client).enter_context(
+        client.websocket_connect(f"/ws/meetings/{MEETING_A}")
+    )
+    socket_guest.send_json(
+        {
+            "type": "join",
+            "meeting_id": MEETING_A,
+            "participant_id": None,
+            "display_name": "Second",
+        }
+    )
+    socket_guest.receive_json()
+
+    socket_host.send_json({"type": "end_meeting", "participant_id": host_id})
+
+    ended = socket_guest.receive_json()
+    assert ended == {"type": "meeting_ended", "meeting_id": MEETING_A}
+
+
+@requires_bd1
+def test_host_flag_survives_reconnect(client, db):
+    """A host who refreshes and rejoins with their id keeps host status."""
+    _seed_meeting(db, MEETING_A)
+
+    socket_first, response = _join(client, MEETING_A, None, "First")
+    host_id = response["participant_id"]
+
+    from app.services import participant_service
+
+    rows = participant_service.get_meeting_participants(db, MEETING_A)
+    host_row = next(r for r in rows if r.id == host_id)
+    assert host_row.is_host is True, "host flag must be persisted, not per-socket"
+
+    socket_first.close()
+
+    socket_again, again = _join(client, MEETING_A, host_id, "First")
+    assert again["type"] == "joined"
+    assert again["participant_id"] == host_id
+
+    socket_again.send_json({"type": "meeting_state", "participant_id": host_id})
+    state = socket_again.receive_json()
+    assert state["is_host"] is True, "reconnecting host must keep host status"
