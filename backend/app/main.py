@@ -1,0 +1,80 @@
+from __future__ import annotations
+
+import logging
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+def create_app() -> FastAPI:
+    application = FastAPI(
+        title=settings.app_name,
+        version="1.0.0",
+    )
+
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    _include_routers(application)
+
+    @application.on_event("startup")
+    async def on_startup() -> None:
+        logger.info(
+            "Realtime server ready (stun=%s, origins=%s)",
+            settings.stun_server,
+            settings.cors_origins,
+        )
+
+    @application.get("/health")
+    async def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    return application
+
+
+def _include_routers(application: FastAPI) -> None:
+    """Attach participant and websocket routers plus BD1's REST routers.
+
+    BD1's modules are imported defensively so the realtime surface can boot
+    independently; missing modules are logged, not raised.
+    """
+    from app.routers.participants import router as participants_router
+
+    application.include_router(participants_router)
+
+    from app.websocket.handler import router as websocket_router
+
+    application.include_router(websocket_router)
+
+    for module_name, attribute, tag in (
+        ("app.routers.users", "router", "users"),
+        ("app.routers.meetings", "router", "meetings"),
+        ("app.routers.schedules", "router", "schedules"),
+    ):
+        router = _load_router(module_name, attribute)
+        if router is not None:
+            application.include_router(router)
+            logger.info("Registered %s router", tag)
+        else:
+            logger.warning("Router %s is not available yet", module_name)
+
+
+def _load_router(module_name: str, attribute: str):
+    try:
+        module = __import__(module_name, fromlist=[attribute])
+        return getattr(module, attribute, None)
+    except Exception:
+        logger.warning("Could not import router from %s", module_name)
+        return None
+
+
+app = create_app()
