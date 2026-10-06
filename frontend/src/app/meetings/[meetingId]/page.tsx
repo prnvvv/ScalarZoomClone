@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useSyncExternalStore, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { useToast } from "@/components/common/ToastProvider";
 import { AlertIcon, CopyIcon, UserIcon } from "@/components/icons";
 import { ControlBar } from "@/components/meeting/ControlBar";
+import { DeviceSelector } from "@/components/meeting/DeviceSelector";
 import { ParticipantsPanel } from "@/components/meeting/ParticipantsPanel";
 import { VideoTile } from "@/components/meeting/VideoTile";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -78,6 +80,8 @@ export default function MeetingRoomPage() {
     useMeetingRoom(meetingId);
 
   const [panelOpen, setPanelOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [confirmEnd, setConfirmEnd] = useState(false);
 
   const storedName = useSyncExternalStore(
     subscribeToSessionName,
@@ -100,6 +104,42 @@ export default function MeetingRoomPage() {
     session.leave();
     router.push("/dashboard");
   };
+
+  const openSettings = () => {
+    setSettingsOpen((open) => !open);
+    setPanelOpen(false);
+  };
+
+  const toggleParticipants = () => {
+    setPanelOpen((open) => !open);
+    setSettingsOpen(false);
+  };
+
+  // One overlay at a time; Escape closes whichever is open.
+  useEffect(() => {
+    if (!panelOpen && !settingsOpen && !confirmEnd) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setPanelOpen(false);
+      setSettingsOpen(false);
+      setConfirmEnd(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [panelOpen, settingsOpen, confirmEnd]);
+
+  const endMeetingForAll = session.endMeeting;
+  const muteEveryone = session.muteAll;
+
+  const endMeeting = useCallback(() => {
+    setConfirmEnd(false);
+    endMeetingForAll();
+  }, [endMeetingForAll]);
+
+  const muteAll = useCallback(() => {
+    muteEveryone();
+    toast("Asked everyone to mute", "success");
+  }, [muteEveryone, toast]);
 
   if (loading) {
     return (
@@ -232,7 +272,9 @@ export default function MeetingRoomPage() {
     );
   }
 
-  const isLocalHost = user?.id === meeting.host_id;
+  // Host status comes from the server once joined; the local user id is only
+  // a pre-join hint.
+  const isLocalHost = session.phase === "joined" && session.isHost;
   const roster: ParticipantSummary[] =
     session.phase === "joined" ? session.participants : participants;
   const others = roster.filter((participant) => {
@@ -246,6 +288,10 @@ export default function MeetingRoomPage() {
 
   return (
     <div className="room">
+      <span className="visually-hidden" role="status" aria-live="polite">
+        {`${connectionLabel(session.connection)}. ${participants.length} in the meeting.`}
+      </span>
+
       <header className="room__header">
         <div className="room__heading">
           <div className="room__title">{meeting.title}</div>
@@ -352,11 +398,48 @@ export default function MeetingRoomPage() {
         isMuted={session.isMuted}
         isVideoOn={session.isVideoOn}
         participantsOpen={panelOpen}
+        settingsOpen={settingsOpen}
         onToggleMute={session.toggleMute}
         onToggleVideo={session.toggleVideo}
-        onToggleParticipants={() => setPanelOpen((o) => !o)}
+        onToggleParticipants={toggleParticipants}
+        onToggleSettings={openSettings}
         onLeave={leaveRoom}
       />
+
+      {settingsOpen ? (
+        <>
+          <div
+            className="room-panel__backdrop"
+            onClick={() => setSettingsOpen(false)}
+            aria-hidden="true"
+          />
+          <div
+            className="room-settings"
+            role="dialog"
+            aria-label="Meeting settings"
+          >
+            <h2 className="room-settings__title">Audio and video</h2>
+            <DeviceSelector
+              audioInputDevices={session.devices.audioInputDevices}
+              videoInputDevices={session.devices.videoInputDevices}
+              audioOutputDevices={session.devices.audioOutputDevices}
+              selectedAudioInputId={session.devices.selectedAudioInputId}
+              selectedVideoInputId={session.devices.selectedVideoInputId}
+              selectedAudioOutputId={session.devices.selectedAudioOutputId}
+              canSelectSpeaker={session.devices.canSelectSpeaker}
+              disabled={session.phase !== "joined"}
+              onAudioInputChange={session.devices.setAudioInput}
+              onVideoInputChange={session.devices.setVideoInput}
+              onAudioOutputChange={session.devices.setAudioOutput}
+            />
+            <p className="room-settings__hint">
+              {session.phase === "joined"
+                ? "Changes apply to everyone in the meeting."
+                : "Devices unlock once you are connected to the meeting."}
+            </p>
+          </div>
+        </>
+      ) : null}
 
       {panelOpen ? (
         <>
@@ -369,10 +452,30 @@ export default function MeetingRoomPage() {
             participants={roster}
             meetingId={meetingId}
             localName={localName}
+            isHost={session.isHost}
+            selfId={session.selfId}
             onClose={() => setPanelOpen(false)}
+            onMuteParticipant={
+              session.isHost ? session.muteParticipant : undefined
+            }
+            onRemoveParticipant={
+              session.isHost ? session.removeParticipant : undefined
+            }
+            onMuteAll={session.isHost ? muteAll : undefined}
+            onEndMeeting={session.isHost ? () => setConfirmEnd(true) : undefined}
           />
         </>
       ) : null}
+
+      <ConfirmDialog
+        open={confirmEnd}
+        title="End meeting for everyone?"
+        message="Every participant will be disconnected. This cannot be undone."
+        confirmLabel="End meeting"
+        destructive
+        onConfirm={endMeeting}
+        onCancel={() => setConfirmEnd(false)}
+      />
     </div>
   );
 }
