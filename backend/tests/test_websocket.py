@@ -1,8 +1,15 @@
 """WebSocket realtime tests.
 
-These tests depend on Backend Developer 1's database base, Meeting model and
-meeting service. Until those modules exist, this file cannot be collected by
-pytest. Once they land, run with::
+The suite is split into two groups:
+
+* Pure tests for ``app.schemas.websocket`` and ``app.websocket.manager``.
+  These have no database dependency and always run.
+* End-to-end tests through the real WebSocket endpoint. These require
+  Backend Developer 1's ``app.database``, ``app.models.meeting`` and
+  ``app.services.meeting_service``. Until those are implemented they skip
+  rather than error at collection time.
+
+Run with::
 
     cd backend
     pytest tests/test_websocket.py -v
@@ -10,22 +17,270 @@ pytest. Once they land, run with::
 
 from __future__ import annotations
 
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+import asyncio
 
-from app.database.base import Base
-from app.main import create_app
-from app.websocket.manager import get_manager
+import pytest
+
+from app.schemas.websocket import (
+    AnswerMessage,
+    EndMeetingMessage,
+    ErrorCode,
+    IceCandidateMessage,
+    JoinMessage,
+    LeaveMessage,
+    MediaStateMessage,
+    MuteParticipantMessage,
+    OfferMessage,
+    PingMessage,
+    RemoveParticipantMessage,
+    ScreenShareMessage,
+    parse_client_message,
+)
+from app.websocket.manager import ConnectionManager, get_manager
 
 MEETING_A = "839452761"
 MEETING_B = "111222333"
 
 
+class FakeWebSocket:
+    """Minimal in-memory WebSocket stand-in for manager-level tests."""
+
+    def __init__(self) -> None:
+        self.sent: list[dict] = []
+        self.closed = False
+        self.accepted = False
+        self.fail_on_send = False
+
+    async def accept(self) -> None:
+        self.accepted = True
+
+    async def send_json(self, message: dict) -> None:
+        if self.fail_on_send:
+            raise RuntimeError("socket died")
+        self.sent.append(message)
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+# --------------------------------------------------------------------------
+# Message validation (no database)
+# --------------------------------------------------------------------------
+
+
+def test_parse_client_message_accepts_every_contract_type():
+    cases = [
+        ({"type": "join", "meeting_id": "m1", "display_name": "John"}, JoinMessage),
+        ({"type": "leave", "participant_id": 1}, LeaveMessage),
+        (
+            {"type": "offer", "sender_id": 1, "target_id": 2, "payload": {"sdp": "v=0"}},
+            OfferMessage,
+        ),
+        (
+            {"type": "answer", "sender_id": 2, "target_id": 1, "payload": {"sdp": "v=0"}},
+            AnswerMessage,
+        ),
+        (
+            {
+                "type": "ice_candidate",
+                "sender_id": 1,
+                "target_id": 2,
+                "payload": {"candidate": "c", "sdpMid": "0", "sdpMLineIndex": 0},
+            },
+            IceCandidateMessage,
+        ),
+        (
+            {"type": "media_state", "participant_id": 1, "is_muted": True, "is_video_on": False},
+            MediaStateMessage,
+        ),
+        ({"type": "screen_share", "participant_id": 1, "active": True}, ScreenShareMessage),
+        ({"type": "mute_participant", "participant_id": 1, "target_id": 2}, MuteParticipantMessage),
+        ({"type": "remove_participant", "participant_id": 1, "target_id": 2}, RemoveParticipantMessage),
+        ({"type": "end_meeting", "participant_id": 1}, EndMeetingMessage),
+        ({"type": "ping"}, PingMessage),
+    ]
+    for payload, model in cases:
+        parsed = parse_client_message(payload)
+        assert isinstance(parsed, model), payload["type"]
+        assert parsed.type == payload["type"]
+
+
+def test_parse_client_message_rejects_malformed():
+    with pytest.raises(ValueError):
+        parse_client_message("not-an-object")
+    with pytest.raises(ValueError):
+        parse_client_message({"no_type": True})
+    with pytest.raises(ValueError):
+        parse_client_message({"type": 123})
+    with pytest.raises(ValueError):
+        parse_client_message({"type": "unknown_event"})
+    with pytest.raises(ValueError):
+        parse_client_message({"type": "leave", "participant_id": "not-an-int"})
+    with pytest.raises(ValueError):
+        parse_client_message({"type": "leave"})
+    with pytest.raises(ValueError):
+        parse_client_message({"type": "offer", "sender_id": 1, "target_id": 2})
+
+
+def test_error_codes_are_stable_contract():
+    assert ErrorCode.MEETING_NOT_FOUND == "MEETING_NOT_FOUND"
+    assert ErrorCode.MEETING_ENDED == "MEETING_ENDED"
+    assert ErrorCode.NOT_A_PARTICIPANT == "NOT_A_PARTICIPANT"
+    assert ErrorCode.NOT_HOST == "NOT_HOST"
+    assert ErrorCode.TARGET_NOT_FOUND == "TARGET_NOT_FOUND"
+    assert ErrorCode.INVALID_MESSAGE == "INVALID_MESSAGE"
+    assert ErrorCode.UNAUTHORIZED_ACTION == "UNAUTHORIZED_ACTION"
+    assert ErrorCode.INTERNAL_ERROR == "INTERNAL_ERROR"
+
+
+# --------------------------------------------------------------------------
+# Connection manager (no database)
+# --------------------------------------------------------------------------
+
+
+async def _check_meeting_isolation():
+    """A1 must never receive anything from meeting B."""
+    manager = ConnectionManager()
+    a1, a2 = FakeWebSocket(), FakeWebSocket()
+    b1, b2 = FakeWebSocket(), FakeWebSocket()
+
+    await manager.connect(a1, meeting_id=MEETING_A, participant_id=1)
+    await manager.connect(a2, meeting_id=MEETING_A, participant_id=2)
+    await manager.connect(b1, meeting_id=MEETING_B, participant_id=3)
+    await manager.connect(b2, meeting_id=MEETING_B, participant_id=4)
+
+    await manager.broadcast(MEETING_A, {"type": "participant_updated", "n": "a"})
+    await manager.broadcast(MEETING_B, {"type": "participant_updated", "n": "b"})
+
+    assert all(m["n"] == "a" for m in a1.sent), "A1 received meeting B traffic"
+    assert all(m["n"] == "a" for m in a2.sent), "A2 received meeting B traffic"
+    assert all(m["n"] == "b" for m in b1.sent), "B1 received meeting A traffic"
+    assert all(m["n"] == "b" for m in b2.sent), "B2 received meeting A traffic"
+
+    assert sorted(await manager.get_meeting_participants(MEETING_A)) == [1, 2]
+    assert sorted(await manager.get_meeting_participants(MEETING_B)) == [3, 4]
+
+
+async def _check_send_is_meeting_scoped():
+    manager = ConnectionManager()
+    a1, b1 = FakeWebSocket(), FakeWebSocket()
+    await manager.connect(a1, meeting_id=MEETING_A, participant_id=1)
+    await manager.connect(b1, meeting_id=MEETING_B, participant_id=9)
+
+    delivered = await manager.send_to_participant(MEETING_A, 9, {"type": "offer"})
+    assert delivered is False
+    assert b1.sent == []
+
+    assert await manager.send_to_participant(MEETING_A, 1, {"type": "offer"}) is True
+    assert a1.sent == [{"type": "offer"}]
+
+
+async def _check_broadcast_except():
+    manager = ConnectionManager()
+    a1, a2, a3 = FakeWebSocket(), FakeWebSocket(), FakeWebSocket()
+    for index, socket in enumerate((a1, a2, a3), start=1):
+        await manager.connect(socket, meeting_id=MEETING_A, participant_id=index)
+
+    delivered = await manager.broadcast_except(MEETING_A, {"type": "ping"}, exclude={2})
+    assert delivered == 2
+    assert len(a1.sent) == 1
+    assert a2.sent == []
+    assert len(a3.sent) == 1
+
+
+async def _check_disconnect_prunes_state():
+    manager = ConnectionManager()
+    a1 = FakeWebSocket()
+    await manager.connect(a1, meeting_id=MEETING_A, participant_id=1)
+    await manager.set_screen_share(MEETING_A, 1, True)
+    assert manager.is_sharing_screen(MEETING_A, 1) is True
+
+    await manager.disconnect(MEETING_A, 1)
+
+    assert await manager.get_meeting_participants(MEETING_A) == []
+    assert manager.is_sharing_screen(MEETING_A, 1) is False
+
+
+async def _check_dead_connection_pruned():
+    manager = ConnectionManager()
+    dead, alive = FakeWebSocket(), FakeWebSocket()
+    dead.fail_on_send = True
+    await manager.connect(dead, meeting_id=MEETING_A, participant_id=1)
+    await manager.connect(alive, meeting_id=MEETING_A, participant_id=2)
+
+    delivered = await manager.broadcast(MEETING_A, {"type": "ping"})
+
+    assert delivered == 1
+    assert sorted(await manager.get_meeting_participants(MEETING_A)) == [2]
+
+
+async def _check_reconnect_replaces_stale_socket():
+    manager = ConnectionManager()
+    stale, fresh = FakeWebSocket(), FakeWebSocket()
+    await manager.connect(stale, meeting_id=MEETING_A, participant_id=1)
+    await manager.connect(fresh, meeting_id=MEETING_A, participant_id=1)
+
+    assert stale.closed is True
+    assert await manager.get_meeting_participants(MEETING_A) == [1]
+    assert await manager.send_to_participant(MEETING_A, 1, {"type": "x"}) is True
+    assert fresh.sent == [{"type": "x"}]
+
+
+async def _check_disconnect_close_and_close_meeting():
+    manager = ConnectionManager()
+    a1, b1 = FakeWebSocket(), FakeWebSocket()
+    await manager.connect(a1, meeting_id=MEETING_A, participant_id=1)
+    await manager.connect(b1, meeting_id=MEETING_B, participant_id=5)
+
+    await manager.disconnect_and_close(MEETING_A, 1)
+    assert a1.closed is True
+    assert b1.closed is False
+
+    closed = await manager.close_meeting(MEETING_B)
+    assert closed == 1
+    assert b1.closed is True
+    assert await manager.get_meeting_participants(MEETING_B) == []
+
+
+
+# --------------------------------------------------------------------------
+# End-to-end WebSocket tests (require Backend Developer 1 modules)
+# --------------------------------------------------------------------------
+
+def _bd1_modules_present() -> bool:
+    """True once Backend Developer 1's database and meeting modules exist."""
+    import importlib.util
+
+    required = (
+        "app.database.base",
+        "app.database.session",
+        "app.models.meeting",
+        "app.services.meeting_service",
+    )
+    for module_name in required:
+        if importlib.util.find_spec(module_name) is None:
+            return False
+
+    from app.database import session as session_module
+
+    return hasattr(session_module, "get_db")
+
+
+requires_bd1 = pytest.mark.skipif(
+    not _bd1_modules_present(),
+    reason="Backend Developer 1 database modules not implemented yet",
+)
+
+
 @pytest.fixture()
 def client():
+    pytest.importorskip(
+        "app.database.base",
+        reason="Backend Developer 1 database modules not implemented yet",
+    )
+    from app.database.base import Base
+    from app.main import create_app
+
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -87,6 +342,7 @@ def _join(client, meeting_id: str, participant_id: int, name: str):
     return socket, socket.receive_json()
 
 
+@requires_bd1
 def test_connection_and_join(client, db):
     _seed_meeting(db, MEETING_A)
     participant = _create_participant(db, MEETING_A, "John")
@@ -99,6 +355,7 @@ def test_connection_and_join(client, db):
     socket.close()
 
 
+@requires_bd1
 def test_invalid_meeting_rejected(client):
     with client.websocket_connect(f"/ws/meetings/{MEETING_B}") as socket:
         response = socket.receive_json()
@@ -106,6 +363,7 @@ def test_invalid_meeting_rejected(client):
     assert response["code"] == "MEETING_NOT_FOUND"
 
 
+@requires_bd1
 def test_participant_joined_and_left_broadcast(client, db):
     _seed_meeting(db, MEETING_A)
     first = _create_participant(db, MEETING_A, "Alice")
@@ -133,6 +391,7 @@ def test_participant_joined_and_left_broadcast(client, db):
     socket_two.close()
 
 
+@requires_bd1
 def test_offer_answer_and_ice_routing(client, db):
     _seed_meeting(db, MEETING_A)
     sender = _create_participant(db, MEETING_A, "Sender")
@@ -186,6 +445,7 @@ def test_offer_answer_and_ice_routing(client, db):
     socket_target.close()
 
 
+@requires_bd1
 def test_media_state_and_screen_share_broadcast(client, db):
     _seed_meeting(db, MEETING_A)
     watcher = _create_participant(db, MEETING_A, "Watcher")
@@ -227,6 +487,7 @@ def test_media_state_and_screen_share_broadcast(client, db):
     socket_actor.close()
 
 
+@requires_bd1
 def test_host_mute_and_unauthorized_mute(client, db):
     _seed_meeting(db, MEETING_A, host_id=1)
     host = _create_participant(db, MEETING_A, "Host", user_id=1)
@@ -266,6 +527,7 @@ def test_host_mute_and_unauthorized_mute(client, db):
     socket_guest.close()
 
 
+@requires_bd1
 def test_host_remove_participant(client, db):
     _seed_meeting(db, MEETING_A, host_id=1)
     host = _create_participant(db, MEETING_A, "Host", user_id=1)
@@ -297,6 +559,7 @@ def test_host_remove_participant(client, db):
     socket_host.close()
 
 
+@requires_bd1
 def test_unauthorized_remove_and_end_meeting(client, db):
     _seed_meeting(db, MEETING_A, host_id=1)
     host = _create_participant(db, MEETING_A, "Host", user_id=1)
@@ -326,6 +589,7 @@ def test_unauthorized_remove_and_end_meeting(client, db):
     socket_host.close()
 
 
+@requires_bd1
 def test_meeting_isolation(client, db):
     _seed_meeting(db, MEETING_A)
     _seed_meeting(db, MEETING_B)
@@ -359,6 +623,7 @@ def test_meeting_isolation(client, db):
         socket.close()
 
 
+@requires_bd1
 def test_disconnect_cleanup_removes_connection(client, db):
     _seed_meeting(db, MEETING_A)
     a1 = _create_participant(db, MEETING_A, "A1")
@@ -378,6 +643,7 @@ def test_disconnect_cleanup_removes_connection(client, db):
     socket_a1.close()
 
 
+@requires_bd1
 def test_invalid_message_returns_error(client, db):
     _seed_meeting(db, MEETING_A)
     participant = _create_participant(db, MEETING_A, "John")
@@ -402,6 +668,7 @@ def test_invalid_message_returns_error(client, db):
     socket.close()
 
 
+@requires_bd1
 def test_signaling_rejects_foreign_sender(client, db):
     _seed_meeting(db, MEETING_A)
     sender = _create_participant(db, MEETING_A, "Sender")
@@ -428,6 +695,7 @@ def test_signaling_rejects_foreign_sender(client, db):
     socket_target.close()
 
 
+@requires_bd1
 def test_signaling_rejects_target_from_other_meeting(client, db):
     _seed_meeting(db, MEETING_A)
     _seed_meeting(db, MEETING_B)
@@ -450,6 +718,7 @@ def test_signaling_rejects_target_from_other_meeting(client, db):
     socket_sender.close()
 
 
+@requires_bd1
 def test_reconnect_reuses_participant(client, db):
     _seed_meeting(db, MEETING_A)
     participant = _create_participant(db, MEETING_A, "John")
@@ -464,6 +733,7 @@ def test_reconnect_reuses_participant(client, db):
     socket_again.close()
 
 
+@requires_bd1
 def test_meeting_state_snapshot_on_rejoin(client, db):
     _seed_meeting(db, MEETING_A)
     watcher = _create_participant(db, MEETING_A, "Watcher")
@@ -485,6 +755,7 @@ def test_meeting_state_snapshot_on_rejoin(client, db):
     socket_watcher.close()
 
 
+@requires_bd1
 def test_messages_before_join_are_rejected(client, db):
     _seed_meeting(db, MEETING_A)
     with client.websocket_connect(f"/ws/meetings/{MEETING_A}") as socket:
@@ -496,6 +767,7 @@ def test_messages_before_join_are_rejected(client, db):
     assert response["code"] == "NOT_A_PARTICIPANT"
 
 
+@requires_bd1
 def test_participant_rest_endpoints(client, db):
     _seed_meeting(db, MEETING_A)
 
@@ -514,3 +786,22 @@ def test_participant_rest_endpoints(client, db):
     assert deleted.status_code == 204
 
     assert client.delete("/api/participants/99999").status_code == 404
+# Generated sync wrappers: no pytest-asyncio dependency required.
+
+def test_manager_meeting_isolation():
+    asyncio.run(_check_meeting_isolation())
+
+def test_manager_send_to_participant_is_meeting_scoped():
+    asyncio.run(_check_send_is_meeting_scoped())
+
+def test_manager_broadcast_except():
+    asyncio.run(_check_broadcast_except())
+
+def test_manager_disconnect_prunes_state():
+    asyncio.run(_check_disconnect_prunes_state())
+
+def test_manager_drops_dead_connection_on_broadcast():
+    asyncio.run(_check_dead_connection_pruned())
+
+def test_manager_reconnect_replaces_stale_socket():
+    asyncio.run(_check_reconnect_replaces_stale_socket())
