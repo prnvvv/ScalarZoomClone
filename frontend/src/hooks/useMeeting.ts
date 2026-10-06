@@ -88,6 +88,7 @@ export function useMeeting({
   const phaseRef = useRef(phase);
   const nameRef = useRef(displayName);
   const selfIdRef = useRef(selfId);
+  const joinedStatusRef = useRef<string | null>(null);
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -97,6 +98,10 @@ export function useMeeting({
   }, [selfId]);
 
   const media = useMediaDevices();
+
+  // `media` is a fresh object every render; these callbacks are stable, so
+  // depend on them instead of on the wrapper.
+  const { stop: stopMedia, setMuted: setMediaMuted, acquire: acquireMedia } = media;
 
   const sendRef = useRef<(message: ClientMessage) => void>(() => undefined);
   const send = useCallback((message: ClientMessage) => {
@@ -113,16 +118,29 @@ export function useMeeting({
     rtcRef.current = rtc;
   }, [rtc]);
 
+  // Terminal states must not leave a stale participant id behind, otherwise a
+  // later visit would try to re-bind a row that no longer exists.
+  const forgetParticipant = useCallback(() => {
+    try {
+      window.sessionStorage.removeItem(STORAGE_KEYS.participantId(meetingId));
+    } catch {
+      /* storage disabled — nothing to clear */
+    }
+    setSelfId(null);
+  }, [meetingId]);
+
   const handleServerError = useCallback(
     (code: Parameters<typeof wsErrorCopy>[0]) => {
       if (code === "MEETING_ENDED") {
         setPhase("ended");
-        media.stop();
+        forgetParticipant();
+        stopMedia();
         return;
       }
       if (code === "MEETING_NOT_FOUND") {
         setFailure(wsErrorCopy(code));
         setPhase("rejected");
+        forgetParticipant();
         return;
       }
       const beforeJoin =
@@ -136,11 +154,12 @@ export function useMeeting({
       ) {
         setFailure(wsErrorCopy(code));
         setPhase("failed");
+        forgetParticipant();
       }
       // NOT_HOST / TARGET_NOT_FOUND / INVALID_MESSAGE are action-scoped
       // failures; the room stays usable.
     },
-    [media.stop]
+    [stopMedia, forgetParticipant]
   );
 
   const handleMessage = useCallback(
@@ -195,19 +214,21 @@ export function useMeeting({
           break;
         case "host_action": {
           if (message.target_id !== selfIdRef.current) break;
-          if (message.action === "mute") media.setMuted(true);
-          else if (message.action === "unmute") media.setMuted(false);
+          if (message.action === "mute") setMediaMuted(true);
+          else if (message.action === "unmute") setMediaMuted(false);
           else {
             setFailure(null);
             setPhase("removed");
-            media.stop();
+            forgetParticipant();
+            stopMedia();
           }
           break;
         }
         case "meeting_ended":
           setFailure(null);
           setPhase("ended");
-          media.stop();
+          forgetParticipant();
+          stopMedia();
           break;
         case "error":
           handleServerError(message.code);
@@ -217,7 +238,7 @@ export function useMeeting({
           break;
       }
     },
-    [meetingId, send, handleServerError, media]
+    [meetingId, send, handleServerError, stopMedia, setMediaMuted, forgetParticipant]
   );
 
   const ws = useWebSocket({
@@ -245,20 +266,26 @@ export function useMeeting({
         setPhase(status === 404 || status === 409 ? "rejected" : "failed");
         return;
       }
-      await media.acquire();
+      await acquireMedia();
       if (!active) return;
       setPhase("joining");
     })();
     return () => {
       active = false;
     };
-  }, [meeting, phase, meetingId, displayName, media]);
+  }, [meeting, phase, meetingId, displayName, acquireMedia]);
 
   // Phase 2: every time the socket opens (first connect or after a
-  // reconnect), join and re-bind our participant row.
+  // reconnect), join and re-bind our participant row. Exactly one `join` per
+  // connection — a phase change must not re-announce us to the server.
   useEffect(() => {
-    if (ws.status !== "connected") return;
-    if (phase !== "joining" && phase !== "joined") return;
+    const joining = phase === "joining" || phase === "joined";
+    if (ws.status !== "connected" || !joining) {
+      joinedStatusRef.current = null;
+      return;
+    }
+    if (joinedStatusRef.current === ws.status) return;
+    joinedStatusRef.current = ws.status;
     const stored = window.sessionStorage.getItem(
       STORAGE_KEYS.participantId(meetingId)
     );
@@ -348,8 +375,9 @@ export function useMeeting({
       send({ type: "leave", participant_id: selfId });
     }
     setPhase("left");
-    media.stop();
-  }, [selfId, phase, send, media]);
+    forgetParticipant();
+    stopMedia();
+  }, [selfId, phase, send, stopMedia, forgetParticipant]);
 
   const retry = useCallback(() => {
     setFailure(null);
@@ -359,10 +387,7 @@ export function useMeeting({
     setPhase("preparing");
   }, []);
 
-  useEffect(() => {
-    const stop = media.stop;
-    return () => stop();
-  }, [media.stop]);
+  useEffect(() => stopMedia, [stopMedia]);
 
   return {
     phase,
