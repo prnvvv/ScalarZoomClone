@@ -41,4 +41,7 @@ yarn-error.log*
 .vscode/
 *.swp
 
+# Agent instruction files
 AGENTS.md
+AGENTS/
+agents/
