@@ -1,8 +1,19 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ControlBar } from "./ControlBar";
 
 afterEach(cleanup);
+
+beforeEach(() => {
+  // jsdom ships no media devices; give the share control a screen-capture API.
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: {
+      getDisplayMedia: vi.fn().mockResolvedValue(null),
+      enumerateDevices: vi.fn().mockResolvedValue([]),
+    },
+  });
+});
 
 const devices = {
   audioInputDevices: [] as MediaDeviceInfo[],
@@ -91,6 +102,17 @@ describe("ControlBar", () => {
 
     fireEvent.click(share);
     expect(onToggleScreenShare).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables share when screen capture is unsupported", () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: undefined,
+    });
+    renderBar();
+    const share = screen.getByRole("button", { name: "Share screen" });
+    expect((share as HTMLButtonElement).disabled).toBe(true);
+    expect(share.getAttribute("title")).toMatch(/HTTPS/);
   });
 
   it("shows stop sharing state when active", () => {
