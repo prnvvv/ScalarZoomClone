@@ -3,10 +3,10 @@
 import { useToast } from "@/components/common/ToastProvider";
 import { CopyIcon, XIcon } from "@/components/icons";
 import { buildInviteUrl, copyText } from "@/lib/utils";
-import type { Participant } from "@/types/participant";
+import type { ParticipantSummary } from "@/types/participant";
 
 interface ParticipantsPanelProps {
-  participants: Participant[];
+  participants: ParticipantSummary[];
   meetingId: string;
   localName: string;
   onClose: () => void;

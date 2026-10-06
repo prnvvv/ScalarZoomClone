@@ -1,0 +1,235 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  createPeerConnection,
+  descriptionToPayload,
+  shouldCreateOffer,
+} from "@/lib/webrtc";
+import type { ClientMessage, SignalPayloadMessage } from "@/types/realtime";
+
+interface UseWebRtcOptions {
+  selfId: number | null;
+  localStream: MediaStream | null;
+  send: (message: ClientMessage) => void;
+}
+
+interface PeerEntry {
+  pc: RTCPeerConnection;
+  pendingCandidates: RTCIceCandidateInit[];
+}
+
+export interface WebRtcState {
+  remoteStreams: Record<number, MediaStream>;
+  /** Create peers for the connected set; offers when we are the lower id. */
+  syncPeers: (peerIds: number[]) => void;
+  handleSignal: (message: SignalPayloadMessage) => Promise<void>;
+  closePeer: (peerId: number) => void;
+  resetPeers: () => void;
+}
+
+/**
+ * Full-mesh WebRTC: one `RTCPeerConnection` per remote participant.
+ * The lower `participant_id` creates offers (deterministic glare handling);
+ * SDP/ICE are forwarded untouched over the signaling socket. Media travels
+ * browser-to-browser only.
+ */
+export function useWebRTC({
+  selfId,
+  localStream,
+  send,
+}: UseWebRtcOptions): WebRtcState {
+  const peersRef = useRef(new Map<number, PeerEntry>());
+  const selfIdRef = useRef(selfId);
+  const sendRef = useRef(send);
+  const [remoteStreams, setRemoteStreams] = useState<Record<number, MediaStream>>({});
+
+  useEffect(() => {
+    selfIdRef.current = selfId;
+  }, [selfId]);
+  useEffect(() => {
+    sendRef.current = send;
+  }, [send]);
+
+  const removePeer = useCallback((peerId: number) => {
+    const entry = peersRef.current.get(peerId);
+    if (entry) {
+      entry.pc.close();
+      peersRef.current.delete(peerId);
+    }
+    setRemoteStreams((current) => {
+      if (!(peerId in current)) return current;
+      const next = { ...current };
+      delete next[peerId];
+      return next;
+    });
+  }, []);
+
+  const ensurePeer = useCallback(
+    (peerId: number): RTCPeerConnection => {
+      const existing = peersRef.current.get(peerId);
+      if (existing) return existing.pc;
+
+      const pc = createPeerConnection();
+      const entry: PeerEntry = { pc, pendingCandidates: [] };
+      peersRef.current.set(peerId, entry);
+
+      if (localStream) {
+        localStream.getTracks().forEach((track) => {
+          pc.addTrack(track, localStream);
+        });
+      }
+
+      pc.onicecandidate = (event) => {
+        const me = selfIdRef.current;
+        if (!event.candidate || me === null) return;
+        sendRef.current({
+          type: "ice_candidate",
+          sender_id: me,
+          target_id: peerId,
+          payload: event.candidate.toJSON() as RTCIceCandidateInit,
+        });
+      };
+
+      pc.ontrack = (event) => {
+        const stream = event.streams[0] ?? new MediaStream([event.track]);
+        setRemoteStreams((current) => ({ ...current, [peerId]: stream }));
+      };
+
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === "failed") {
+          // Drop the dead peer; the next syncPeers() rebuilds it if the
+          // participant is still connected.
+          removePeer(peerId);
+        }
+      };
+
+      return pc;
+    },
+    [localStream, removePeer]
+  );
+
+  const sendOffer = useCallback(
+    async (peerId: number): Promise<void> => {
+      const me = selfIdRef.current;
+      if (me === null || !shouldCreateOffer(me, peerId)) return;
+      const pc = ensurePeer(peerId);
+      if (pc.remoteDescription || pc.signalingState !== "stable") return;
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      sendRef.current({
+        type: "offer",
+        sender_id: me,
+        target_id: peerId,
+        payload: descriptionToPayload(pc.localDescription ?? offer),
+      });
+    },
+    [ensurePeer]
+  );
+
+  const syncPeers = useCallback(
+    (peerIds: number[]) => {
+      for (const peerId of peerIds) {
+        if (peerId === selfIdRef.current) continue;
+        void sendOffer(peerId);
+      }
+    },
+    [sendOffer]
+  );
+
+  const handleSignal = useCallback(
+    async (message: SignalPayloadMessage): Promise<void> => {
+      const { sender_id: peerId, payload } = message;
+      if (peerId === selfIdRef.current) return;
+
+      if (message.type === "ice_candidate") {
+        const entry = peersRef.current.get(peerId);
+        if (!entry) return;
+        const candidate = payload as RTCIceCandidateInit;
+        if (entry.pc.remoteDescription) {
+          await entry.pc.addIceCandidate(candidate).catch(() => undefined);
+        } else {
+          entry.pendingCandidates.push(candidate);
+        }
+        return;
+      }
+
+      const pc = ensurePeer(peerId);
+
+      if (message.type === "offer") {
+        const offer = payload as unknown as RTCSessionDescriptionInit;
+        await pc.setRemoteDescription(offer);
+        for (const candidate of entryCandidates(peersRef, peerId)) {
+          await pc.addIceCandidate(candidate).catch(() => undefined);
+        }
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        const me = selfIdRef.current;
+        if (me !== null) {
+          sendRef.current({
+            type: "answer",
+            sender_id: me,
+            target_id: peerId,
+            payload: descriptionToPayload(pc.localDescription ?? answer),
+          });
+        }
+        return;
+      }
+
+      // answer
+      const answer = payload as unknown as RTCSessionDescriptionInit;
+      if (!pc.remoteDescription) {
+        await pc.setRemoteDescription(answer);
+        const entry = peersRef.current.get(peerId);
+        for (const candidate of entry?.pendingCandidates ?? []) {
+          await pc
+            .addIceCandidate(candidate as RTCIceCandidateInit)
+            .catch(() => undefined);
+        }
+        if (entry) entry.pendingCandidates = [];
+      }
+    },
+    [ensurePeer]
+  );
+
+  const resetPeers = useCallback(() => {
+    for (const peerId of [...peersRef.current.keys()]) {
+      removePeer(peerId);
+    }
+  }, [removePeer]);
+
+  // Attach the local stream when it arrives after peers exist.
+  useEffect(() => {
+    if (!localStream) return;
+    for (const { pc } of peersRef.current.values()) {
+      const alreadyAttached = pc.getSenders().some(
+        (sender) =>
+          sender.track != null && localStream.getTracks().includes(sender.track)
+      );
+      if (alreadyAttached) continue;
+      localStream.getTracks().forEach((track) => {
+        pc.addTrack(track, localStream);
+      });
+    }
+  }, [localStream]);
+
+  useEffect(() => {
+    const peers = peersRef.current;
+    return () => {
+      for (const { pc } of peers.values()) pc.close();
+      peers.clear();
+    };
+  }, []);
+
+  return { remoteStreams, syncPeers, handleSignal, closePeer: removePeer, resetPeers };
+}
+
+function entryCandidates(
+  peersRefObj: { current: Map<number, PeerEntry> },
+  peerId: number
+): RTCIceCandidateInit[] {
+  const entry = peersRefObj.current.get(peerId);
+  if (!entry) return [];
+  const queued = entry.pendingCandidates.splice(0);
+  return queued;
+}
