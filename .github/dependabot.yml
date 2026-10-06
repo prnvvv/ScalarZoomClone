@@ -1,0 +1,46 @@
+version: 2
+
+updates:
+  # CI action versions (actions/checkout, actions/setup-python, ...)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  # Python packages. Tracked against the CI install list until
+  # backend/requirements.txt is populated (owned by Backend Developer 1).
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps"
+    labels:
+      - "dependencies"
+      - "python"
+    groups:
+      python-minor:
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # FastAPI/Pydantic/SQLAlchemy majors carry breaking contract changes
+      # that must be reviewed against AGENTS.md, not auto-merged.
+      - dependency-name: "fastapi"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "pydantic"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "sqlalchemy"
+        update-types:
+          - "version-update:semver-major"
