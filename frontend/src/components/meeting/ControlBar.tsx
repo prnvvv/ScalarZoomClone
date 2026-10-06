@@ -107,6 +107,13 @@ export function ControlBar({
   onEndMeeting,
   onLeave,
 }: ControlBarProps) {
+  // Screen capture needs a secure context; on plain http over a LAN IP the
+  // API does not exist at all, so the control says so instead of failing
+  // silently when clicked.
+  const canShare =
+    typeof navigator !== "undefined" &&
+    typeof navigator.mediaDevices?.getDisplayMedia === "function";
+
   const micIcon = !audioAvailable ? (
     <MicOffIcon size={20} />
   ) : isMuted ? (
@@ -318,7 +325,14 @@ export function ControlBar({
           className={cx("control", isScreenSharing && "control--active")}
           aria-pressed={isScreenSharing}
           aria-label={isScreenSharing ? "Stop sharing screen" : "Share screen"}
-          title={isScreenSharing ? "Stop sharing" : "Share screen"}
+          title={
+            canShare
+              ? isScreenSharing
+                ? "Stop sharing"
+                : "Share screen"
+              : "Screen sharing needs HTTPS or localhost"
+          }
+          disabled={!canShare}
           onClick={onToggleScreenShare}
         >
           <span className="control__button">
