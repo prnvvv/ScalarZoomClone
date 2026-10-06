@@ -274,20 +274,43 @@ describe("useMediaDevices", () => {
     expect(result.current.error).toContain("another application");
   });
 
-  it("re-enumerates when the browser reports a device change", async () => {
-    const { result } = renderHook(() => useMediaDevices());
-    await act(async () => undefined);
-    expect(result.current.videoInputDevices).toHaveLength(1);
+  it("re-enumerates once for a burst of device changes", async () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useMediaDevices());
+      await act(async () => undefined);
+      expect(result.current.videoInputDevices).toHaveLength(1);
 
-    devices = [MIC_A, MIC_B, CAM_A, SPEAKER, device("cam-b", "videoinput", "Webcam")];
-    await act(async () => {
-      emitDeviceChange();
-    });
+      devices = [
+        MIC_A,
+        MIC_B,
+        CAM_A,
+        SPEAKER,
+        device("cam-b", "videoinput", "Webcam"),
+      ];
+      const enumerate = navigator.mediaDevices
+        .enumerateDevices as unknown as ReturnType<typeof vi.fn>;
+      const before = enumerate.mock.calls.length;
 
-    expect(result.current.videoInputDevices.map((d) => d.deviceId)).toEqual([
-      "cam-a",
-      "cam-b",
-    ]);
+      await act(async () => {
+        emitDeviceChange();
+        emitDeviceChange();
+        emitDeviceChange();
+      });
+      // Nothing is re-enumerated until the burst settles.
+      expect(enumerate.mock.calls.length).toBe(before);
+
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(enumerate.mock.calls.length).toBe(before + 1);
+      expect(result.current.videoInputDevices.map((d) => d.deviceId)).toEqual([
+        "cam-a",
+        "cam-b",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("toggles tracks without renegotiating", async () => {
