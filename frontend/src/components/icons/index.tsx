@@ -375,3 +375,130 @@ export function VideoSlashBrandIcon(props: IconProps) {
     </svg>
   );
 }
+
+
+export function SmileIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8.5 14.2a4.2 4.2 0 0 0 7 0" />
+      <path d="M9 9.5h.01M15 9.5h.01" />
+    </Icon>
+  );
+}
+
+export function PinIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M9 4h6l-.7 5.2 2.7 2.3H7l2.7-2.3L9 4Z" />
+      <path d="M12 11.5V20" />
+    </Icon>
+  );
+}
+
+export function ShieldIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3.5 5 6v5.5c0 4 2.9 7.4 7 8.9 4.1-1.5 7-4.9 7-8.9V6l-7-2.5Z" />
+      <path d="m9.2 12 2 2 3.6-3.8" />
+    </Icon>
+  );
+}
+
+export function MaximizeIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M8.5 4H5.5A1.5 1.5 0 0 0 4 5.5v3" />
+      <path d="M15.5 4h3A1.5 1.5 0 0 1 20 5.5v3" />
+      <path d="M8.5 20h-3A1.5 1.5 0 0 1 4 18.5v-3" />
+      <path d="M15.5 20h3a1.5 1.5 0 0 0 1.5-1.5v-3" />
+    </Icon>
+  );
+}
+
+export function MinimizeIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 8.5h4.5V4" />
+      <path d="M20 8.5h-4.5V4" />
+      <path d="M4 15.5h4.5V20" />
+      <path d="M20 15.5h-4.5V20" />
+    </Icon>
+  );
+}
+
+export function GridViewIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="4" y="4" width="7" height="7" rx="1.6" />
+      <rect x="13" y="4" width="7" height="7" rx="1.6" />
+      <rect x="4" y="13" width="7" height="7" rx="1.6" />
+      <rect x="13" y="13" width="7" height="7" rx="1.6" />
+    </Icon>
+  );
+}
+
+export function SpeakerViewIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="3.5" y="5" width="12" height="14" rx="2" />
+      <rect x="17" y="5" width="3.5" height="4" rx="1.2" />
+      <rect x="17" y="10.5" width="3.5" height="4" rx="1.2" />
+      <rect x="17" y="16" width="3.5" height="3" rx="1.2" />
+    </Icon>
+  );
+}
+
+export function AutoLayoutIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="3.5" y="5.5" width="17" height="13" rx="2.2" />
+      <path d="M12 5.5v13" />
+    </Icon>
+  );
+}
+
+export function ChevronUpIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m6 14.5 6-6 6 6" />
+    </Icon>
+  );
+}
+
+export function ChevronRightIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m9.5 6 6 6-6 6" />
+    </Icon>
+  );
+}
+
+export function MoreHorizontalIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="5.5" cy="12" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="18.5" cy="12" r="1.4" fill="currentColor" stroke="none" />
+    </Icon>
+  );
+}
+
+export function VolumeIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M5 9.5h3l4-3.2v11.4l-4-3.2H5a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1Z" />
+      <path d="M15.5 9.6a3.4 3.4 0 0 1 0 4.8" />
+      <path d="M18 7.4a6.6 6.6 0 0 1 0 9.2" />
+    </Icon>
+  );
+}
+
+export function KeyboardIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="3" y="6.5" width="18" height="11" rx="2.2" />
+      <path d="M7 10h.01M10.5 10h.01M14 10h.01M17.5 10h.01M7.5 14h9" />
+    </Icon>
+  );
+}
