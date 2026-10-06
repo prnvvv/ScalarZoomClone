@@ -9,6 +9,7 @@ import {
   MinimizeIcon,
   MicIcon,
   MicOffIcon,
+  MoreHorizontalIcon,
   PhoneOffIcon,
   ScreenShareIcon,
   ScreenShareOffIcon,
@@ -45,6 +46,8 @@ export interface ControlBarDeviceOptions {
 interface ControlBarProps {
   isMuted: boolean;
   isVideoOn: boolean;
+  /** True once the user joined audio; false shows the Join Audio state. */
+  audioJoined: boolean;
   /** False when the microphone could not be acquired (blocked or missing). */
   audioAvailable: boolean;
   /** False when the camera could not be acquired (blocked or missing). */
@@ -85,6 +88,7 @@ function deviceName(device: MediaDeviceInfo, index: number): string {
 export function ControlBar({
   isMuted,
   isVideoOn,
+  audioJoined,
   audioAvailable,
   videoAvailable,
   participantsOpen,
@@ -114,13 +118,17 @@ export function ControlBar({
     typeof navigator !== "undefined" &&
     typeof navigator.mediaDevices?.getDisplayMedia === "function";
 
-  const micIcon = !audioAvailable ? (
-    <MicOffIcon size={20} />
-  ) : isMuted ? (
-    <MicOffIcon size={20} />
-  ) : (
-    <MicIcon size={20} />
-  );
+  const micLive = audioJoined && audioAvailable;
+  const micIcon = micLive && !isMuted ? <MicIcon size={20} /> : <MicOffIcon size={20} />;
+  const audioName = !audioJoined
+    ? "Join Audio"
+    : isMuted
+      ? "Unmute microphone"
+      : "Mute microphone";
+  const audioVisible = !audioJoined ? "Join Audio" : isMuted ? "Unmute" : "Mute";
+
+  const videoLive = isVideoOn && videoAvailable;
+  const videoVisible = videoLive ? "Stop Video" : "Start Video";
 
   return (
     <div className="room__controls" role="toolbar" aria-label="Meeting controls">
@@ -134,22 +142,22 @@ export function ControlBar({
                 type="button"
                 className={cx(
                   "control",
-                  (isMuted || !audioAvailable) && "control--off",
+                  !micLive && "control--off",
                   !audioAvailable && "control--unavailable"
                 )}
-                aria-pressed={isMuted}
-                aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
+                aria-pressed={audioJoined ? isMuted : undefined}
+                aria-label={audioName}
                 title={
                   audioAvailable
-                    ? isMuted
-                      ? "Unmute microphone"
-                      : "Mute microphone"
-                    : "Microphone unavailable"
+                    ? audioName
+                    : audioJoined
+                      ? "Microphone unavailable"
+                      : "Microphone unavailable — click to retry"
                 }
                 onClick={onToggleMute}
               >
                 <span className="control__button">{micIcon}</span>
-                <span className="control__label">Audio</span>
+                <span className="control__label">{audioVisible}</span>
               </button>
               <button
                 type="button"
@@ -207,7 +215,7 @@ export function ControlBar({
                 type="button"
                 className={cx(
                   "control",
-                  (!isVideoOn || !videoAvailable) && "control--off",
+                  !videoLive && "control--off",
                   !videoAvailable && "control--unavailable"
                 )}
                 aria-pressed={!isVideoOn}
@@ -215,20 +223,16 @@ export function ControlBar({
                 title={
                   videoAvailable
                     ? isVideoOn
-                      ? "Turn camera off"
-                      : "Turn camera on"
+                      ? "Stop video"
+                      : "Start video"
                     : "Camera unavailable"
                 }
                 onClick={onToggleVideo}
               >
                 <span className="control__button">
-                  {isVideoOn && videoAvailable ? (
-                    <VideoIcon size={20} />
-                  ) : (
-                    <VideoOffIcon size={20} />
-                  )}
+                  {videoLive ? <VideoIcon size={20} /> : <VideoOffIcon size={20} />}
                 </span>
-                <span className="control__label">Video</span>
+                <span className="control__label">{videoVisible}</span>
               </button>
               <button
                 type="button"
@@ -322,7 +326,10 @@ export function ControlBar({
 
         <button
           type="button"
-          className={cx("control", isScreenSharing && "control--active")}
+          className={cx(
+            "control",
+            isScreenSharing ? "control--danger" : "control--share"
+          )}
           aria-pressed={isScreenSharing}
           aria-label={isScreenSharing ? "Stop sharing screen" : "Share screen"}
           title={
@@ -418,7 +425,7 @@ export function ControlBar({
               onClick={triggerProps.onToggle}
             >
               <span className="control__button">
-                <SettingsIcon size={20} />
+                <MoreHorizontalIcon size={20} />
               </span>
               <span className="control__label">More</span>
             </button>
