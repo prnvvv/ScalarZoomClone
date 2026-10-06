@@ -242,3 +242,41 @@ def test_update_participant_state_sets_media_flags(db):
     assert updated.is_muted is True
     assert updated.is_video_on is False
     assert updated.screen_share is True
+
+# --------------------------------------------------------------------------
+# Error mapping and field bounds (regression guards)
+# --------------------------------------------------------------------------
+
+
+def test_unknown_meeting_returns_404_not_500(client):
+    """Regression: MeetingNotFoundError used to escape as an unhandled 500."""
+    listed = client.get("/api/meetings/999999999/participants")
+    added = client.post(
+        "/api/meetings/999999999/participants", json={"display_name": "Ann"}
+    )
+
+    assert listed.status_code == 404
+    assert added.status_code == 404
+
+
+def test_malformed_meeting_id_returns_404(client):
+    assert client.get("/api/meetings/not-a-meeting/participants").status_code == 404
+
+
+@pytest.mark.parametrize("length", [1, 50, 99, 100])
+def test_display_name_within_column_limit_accepted(client, length):
+    response = client.post(
+        f"/api/meetings/{MEETING}/participants",
+        json={"display_name": "n" * length},
+    )
+    assert response.status_code == 201, (length, response.status_code)
+
+
+@pytest.mark.parametrize("length", [101, 110, 120])
+def test_display_name_beyond_column_limit_rejected(client, length):
+    """Regression: the schema allowed 120 while the column is String(100)."""
+    response = client.post(
+        f"/api/meetings/{MEETING}/participants",
+        json={"display_name": "n" * length},
+    )
+    assert response.status_code == 422, (length, response.status_code)
