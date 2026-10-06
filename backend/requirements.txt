@@ -4,7 +4,7 @@
 # Web framework + ASGI server. [standard] supplies `websockets`, which is
 # required to serve WS /ws/meetings/{meeting_id}.
 fastapi>=0.117,<1.0
-uvicorn[standard]>=0.37
+uvicorn[standard]>=0.54.0
 
 # ORM and validation. SQLAlchemy 2.x and Pydantic 2.x are hard floors:
 # DeclarativeBase/Mapped/mapped_column and ConfigDict/StringConstraints/
