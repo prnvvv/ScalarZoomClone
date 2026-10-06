@@ -44,6 +44,9 @@ const DEVICE_BUSY =
 const DEVICE_GONE =
   "The selected device is no longer available. We switched to the default device.";
 
+/** Plugging in one device can emit a burst of `devicechange` events. */
+const DEVICE_CHANGE_DEBOUNCE_MS = 300;
+
 const DEVICE_LABELS: Record<MediaDeviceKind, string> = {
   audioinput: "Microphone",
   audiooutput: "Speaker",
@@ -200,15 +203,23 @@ export function useMediaDevices(): MediaDevicesState {
     };
   }, [applyDeviceList]);
 
-  // Device hot-plug is reported by the browser, not polled.
+  // Device hot-plug is reported by the browser, not polled. Plugging in a
+  // webcam can fire `devicechange` several times in a row, so re-enumeration
+  // is debounced to a single pass.
   useEffect(() => {
     if (!canEnumerate()) return;
     const media = navigator.mediaDevices;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const onDeviceChange = () => {
-      void refreshDevices();
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        void refreshDevices();
+      }, DEVICE_CHANGE_DEBOUNCE_MS);
     };
     media.addEventListener("devicechange", onDeviceChange);
     return () => {
+      if (timer !== null) clearTimeout(timer);
       media.removeEventListener("devicechange", onDeviceChange);
     };
   }, [refreshDevices]);
