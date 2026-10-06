@@ -13,7 +13,7 @@ concurrency:
 jobs:
   test:
     name: Realtime backend tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     defaults:
       run:
@@ -26,9 +26,9 @@ jobs:
       STUN_SERVER: stun:stun.l.google.com:19302
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
