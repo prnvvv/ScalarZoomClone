@@ -180,6 +180,18 @@ export default function MeetingRoomPage() {
     toast("Asked everyone to mute", "success");
   }, [muteEveryone, toast]);
 
+  // Share failures (unsupported context, unexpected browser error) surface
+  // as a toast; a dismissed picker stays silent, like Zoom.
+  const handleScreenShare = useCallback(() => {
+    void session.toggleScreenShare().then((result) => {
+      if (result === "unsupported") {
+        toast("Screen sharing needs HTTPS or localhost in this browser.", "error");
+      } else if (result === "error") {
+        toast("Couldn't share your screen. Please try again.", "error");
+      }
+    });
+  }, [session, toast]);
+
   // One overlay at a time; Escape closes whichever is open.
   useEffect(() => {
     if (!panelOpen && !settingsOpen && !confirmEnd) return;
@@ -508,6 +520,14 @@ export default function MeetingRoomPage() {
         </div>
       ) : null}
 
+      {joined && !session.audioJoined && !session.isVideoOn ? (
+        <div className="room-notice room-notice--info">
+          <MicOffIcon size={16} />
+          Your microphone and camera are off. Click Join Audio or Start Video
+          when you&apos;re ready.
+        </div>
+      ) : null}
+
       <main className="room__stage">
         <ParticipantGrid
           tiles={tiles}
@@ -524,6 +544,7 @@ export default function MeetingRoomPage() {
       <ControlBar
         isMuted={session.isMuted}
         isVideoOn={session.isVideoOn}
+        audioJoined={session.audioJoined}
         audioAvailable={session.audioAvailable}
         videoAvailable={session.videoAvailable}
         participantsOpen={panelOpen}
@@ -536,7 +557,7 @@ export default function MeetingRoomPage() {
         onToggleMute={session.toggleMute}
         onToggleVideo={session.toggleVideo}
         onToggleParticipants={toggleParticipants}
-        onToggleScreenShare={session.toggleScreenShare}
+        onToggleScreenShare={handleScreenShare}
         onReact={session.sendReaction}
         onSetLayout={prefs.setLayout}
         onOpenSettings={openSettings}
