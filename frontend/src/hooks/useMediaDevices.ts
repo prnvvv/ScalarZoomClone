@@ -3,13 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { STORAGE_KEYS } from "@/lib/constants";
 
-export interface MediaDevicePreferences {
-  audioInputId?: string | null;
-  videoInputId?: string | null;
-}
-
 export interface MediaDevicesState {
   stream: MediaStream | null;
+  /** True once the user explicitly joined audio (microphone live). */
+  audioJoined: boolean;
   isMuted: boolean;
   isVideoOn: boolean;
   /** False when no microphone track could be acquired (missing or blocked). */
@@ -26,13 +23,20 @@ export interface MediaDevicesState {
   selectedAudioOutputId: string | null;
   /** False when the browser cannot route remote audio to a chosen speaker. */
   canSelectSpeaker: boolean;
-  acquire: (preferences?: MediaDevicePreferences) => Promise<void>;
+  /** Refreshes the device list; never prompts for camera or microphone. */
+  acquire: () => Promise<void>;
   refreshDevices: () => Promise<void>;
   setAudioInput: (deviceId: string) => void;
   setVideoInput: (deviceId: string) => void;
   setAudioOutput: (deviceId: string) => void;
+  /** Requests microphone permission and joins audio on success. */
+  joinAudio: () => Promise<boolean>;
   setMuted: (next: boolean) => void;
-  setVideoOn: (next: boolean) => void;
+  /**
+   * Turns the camera off synchronously; turning it on resolves once the
+   * permission request (if any) has settled.
+   */
+  setVideoOn: (next: boolean) => Promise<void>;
   stop: () => void;
 }
 
@@ -42,11 +46,18 @@ const MEDIA_ERROR =
 const CAMERA_BLOCKED =
   "Camera access was blocked. Allow camera access in your browser settings, then try again.";
 
+const MIC_BLOCKED =
+  "Microphone access was blocked. Allow microphone access in your browser settings, then try again.";
+
 const DEVICE_BUSY =
   "Your camera or microphone is in use by another application. Close it and try again.";
 
 const DEVICE_GONE =
   "The selected device is no longer available. We switched to the default device.";
+
+const NO_MIC = "No microphone was found. Check your input device and try again.";
+
+const NO_CAMERA = "No camera was found. Check your device and try again.";
 
 /** Plugging in one device can emit a burst of `devicechange` events. */
 const DEVICE_CHANGE_DEBOUNCE_MS = 300;
@@ -104,6 +115,37 @@ function friendlyError(cause: unknown): string {
   }
 }
 
+/** Kind-specific copy for a failed permission/device request. */
+function kindError(kind: "audio" | "video", cause: unknown): string {
+  switch (errorName(cause)) {
+    case "NotAllowedError":
+    case "PermissionDeniedError":
+    case "SecurityError":
+      return kind === "audio" ? MIC_BLOCKED : CAMERA_BLOCKED;
+    case "NotReadableError":
+    case "TrackStartError":
+      return DEVICE_BUSY;
+    case "OverconstrainedError":
+    case "NotFoundError":
+      return kind === "audio" ? NO_MIC : NO_CAMERA;
+    default:
+      return kind === "audio" ? NO_MIC : friendlyError(cause);
+  }
+}
+
+/**
+ * A successful action clears only its own blocking messages; notices from
+ * the other kind (and the "switched to the default device" notice) survive.
+ */
+const AUDIO_BLOCKING_ERRORS = [MIC_BLOCKED, NO_MIC, DEVICE_BUSY, MEDIA_ERROR];
+const VIDEO_BLOCKING_ERRORS = [CAMERA_BLOCKED, NO_CAMERA, DEVICE_BUSY, MEDIA_ERROR];
+
+function clearOwnedError(kind: "audio" | "video") {
+  const owned = kind === "audio" ? AUDIO_BLOCKING_ERRORS : VIDEO_BLOCKING_ERRORS;
+  return (current: string | null): string | null =>
+    current !== null && owned.includes(current) ? null : current;
+}
+
 function audioConstraint(deviceId: string | null): MediaTrackConstraints | boolean {
   return deviceId ? { deviceId: { exact: deviceId } } : true;
 }
@@ -137,16 +179,18 @@ export function supportsSpeakerSelection(): boolean {
 /**
  * Local media plus device selection.
  *
- * `acquire()` with no arguments is idempotent (the meeting hook calls it from
- * an effect); passing preferences re-acquires with those devices, replacing the
- * previous stream while preserving the mute/camera state the user chose.
- * `stop()` never touches React state, so it is safe from effect cleanup.
+ * Nothing is captured until the user acts: `joinAudio()` requests the
+ * microphone (Zoom-like "Join Audio") and `setVideoOn(true)` requests the
+ * camera. `acquire()` / `refreshDevices()` only enumerate device names.
+ * `stop()` releases every track and resets the join flags so a retry
+ * starts from the same off-by-default state.
  */
 export function useMediaDevices(): MediaDevicesState {
   const streamRef = useRef<MediaStream | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOn, setIsVideoOn] = useState(true);
+  const [audioJoined, setAudioJoined] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
+  const [isVideoOn, setIsVideoOn] = useState(false);
   const [audioAvailable, setAudioAvailable] = useState(true);
   const [videoAvailable, setVideoAvailable] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -168,8 +212,11 @@ export function useMediaDevices(): MediaDevicesState {
   // Mirrors of state that async code needs to read without re-subscribing.
   const audioInputIdRef = useRef<string | null>(selectedAudioInputId);
   const videoInputIdRef = useRef<string | null>(selectedVideoInputId);
-  const mutedRef = useRef(false);
-  const videoOnRef = useRef(true);
+  const audioJoinedRef = useRef(false);
+  const mutedRef = useRef(true);
+  const videoOnRef = useRef(false);
+  const joinPendingRef = useRef(false);
+  const cameraPendingRef = useRef(false);
 
   useEffect(() => {
     mutedRef.current = isMuted;
@@ -194,7 +241,7 @@ export function useMediaDevices(): MediaDevicesState {
   }, [applyDeviceList]);
 
   // Initial enumeration runs after the first commit so a room the user leaves
-  // immediately never pays for it.
+  // immediately never pays for it. It never prompts for permissions.
   useEffect(() => {
     if (!canEnumerate()) return;
     let active = true;
@@ -230,52 +277,37 @@ export function useMediaDevices(): MediaDevicesState {
     };
   }, [refreshDevices]);
 
-  const adoptStream = useCallback((next: MediaStream, preserveFlags: boolean) => {
-    const previous = streamRef.current;
-    if (previous && previous !== next) {
-      previous.getTracks().forEach((track) => track.stop());
-    }
-    const audioTracks = next.getAudioTracks();
-    const videoTracks = next.getVideoTracks();
-    setAudioAvailable(audioTracks.length > 0);
-    setVideoAvailable(videoTracks.length > 0);
-
-    if (preserveFlags) {
-      audioTracks.forEach((track) => {
-        track.enabled = !mutedRef.current;
-      });
-      videoTracks.forEach((track) => {
-        track.enabled = videoOnRef.current;
-      });
-      // A device without the requested kind must report as off, not on.
-      if (audioTracks.length === 0) setIsMuted(true);
-      if (videoTracks.length === 0) setIsVideoOn(false);
-    } else {
-      setIsMuted(audioTracks.length === 0);
-      setIsVideoOn(videoTracks.length > 0);
-    }
-
-    streamRef.current = next;
-    setStream(next);
-    void refreshDevices();
-  }, [refreshDevices]);
-
-  const requestStream = useCallback(
-    async (audioId: string | null, videoId: string | null): Promise<MediaStream> => {
-      const request = (audio: string | null, video: string | null) =>
-        navigator.mediaDevices.getUserMedia({
-          audio: audioConstraint(audio),
-          video: videoConstraint(video),
-        });
+  /**
+   * Requests one kind of track for the chosen (or default) device, falling
+   * back to the system default when the remembered device disappeared.
+   */
+  const requestTrack = useCallback(
+    async (
+      kind: "audio" | "video",
+      deviceId: string | null
+    ): Promise<MediaStreamTrack> => {
+      const request = (id: string | null) => {
+        const constraints: MediaStreamConstraints =
+          kind === "audio"
+            ? { audio: audioConstraint(id) }
+            : { video: videoConstraint(id) };
+        return navigator.mediaDevices.getUserMedia(constraints);
+      };
 
       try {
-        return await request(audioId, videoId);
+        const acquired = await request(deviceId);
+        const track = kind === "audio" ? acquired.getAudioTracks()[0] : acquired.getVideoTracks()[0];
+        if (track) return track;
+        acquired.getTracks().forEach((t) => t.stop());
+        throw new Error("track missing");
       } catch (cause: unknown) {
-        const name = errorName(cause);
-        if (name === "OverconstrainedError" && (audioId || videoId)) {
+        if (errorName(cause) === "OverconstrainedError" && deviceId) {
           // The remembered device is gone — fall back to system defaults.
           setError(DEVICE_GONE);
-          return request(null, null);
+          const acquired = await request(null);
+          const track = kind === "audio" ? acquired.getAudioTracks()[0] : acquired.getVideoTracks()[0];
+          if (track) return track;
+          acquired.getTracks().forEach((t) => t.stop());
         }
         throw cause;
       }
@@ -283,67 +315,134 @@ export function useMediaDevices(): MediaDevicesState {
     []
   );
 
-  const acquire = useCallback(
-    async (preferences?: MediaDevicePreferences) => {
-      const audioId =
-        preferences && preferences.audioInputId !== undefined
-          ? preferences.audioInputId
-          : audioInputIdRef.current;
-      const videoId =
-        preferences && preferences.videoInputId !== undefined
-          ? preferences.videoInputId
-          : videoInputIdRef.current;
-
-      // Idempotent unless the caller explicitly asked for other devices.
-      if (!preferences && streamRef.current) return;
-
-      if (!canGetUserMedia()) {
-        setIsMuted(true);
-        setIsVideoOn(false);
-        setAudioAvailable(false);
-        setVideoAvailable(false);
-        setError(MEDIA_ERROR);
-        return;
-      }
-
-      const preserveFlags = streamRef.current !== null;
-      try {
-        let acquired: MediaStream;
-        try {
-          acquired = await requestStream(audioId, videoId);
-        } catch (cause: unknown) {
-          if (errorName(cause) === "NotAllowedError") {
-            setIsMuted(true);
-            setIsVideoOn(false);
-            setAudioAvailable(false);
-            setVideoAvailable(false);
-            setError(CAMERA_BLOCKED);
-            return;
-          }
-          if (errorName(cause) === "NotReadableError") {
-            setIsMuted(true);
-            setIsVideoOn(false);
-            setAudioAvailable(false);
-            setVideoAvailable(false);
-            setError(DEVICE_BUSY);
-            return;
-          }
-          // Fall back to microphone-only when the camera is unavailable.
-          acquired = await navigator.mediaDevices.getUserMedia({ audio: true });
-          setError("Camera unavailable — audio only.");
+  /**
+   * Moves a freshly captured track into the active stream. A new MediaStream
+   * is published every time so React and the WebRTC hook observe the change
+   * and can attach the new track to existing peer connections.
+   */
+  const mergeTrack = useCallback((track: MediaStreamTrack): MediaStream => {
+    const previous = streamRef.current;
+    const carried: MediaStreamTrack[] = [];
+    if (previous) {
+      for (const existing of previous.getTracks()) {
+        if (existing.kind === track.kind) {
+          existing.stop();
+        } else {
+          carried.push(existing);
         }
-        adoptStream(acquired, preserveFlags);
+      }
+    }
+    const next = new MediaStream([...carried, track]);
+    streamRef.current = next;
+    setStream(next);
+    return next;
+  }, []);
+
+  // Device lists only — media capture happens on explicit user action.
+  const acquire = useCallback(() => refreshDevices(), [refreshDevices]);
+
+  const joinAudio = useCallback(async (): Promise<boolean> => {
+    if (audioJoinedRef.current) return true;
+    if (joinPendingRef.current) return false;
+    if (!canGetUserMedia()) {
+      setAudioAvailable(false);
+      setError(MEDIA_ERROR);
+      return false;
+    }
+    joinPendingRef.current = true;
+    try {
+      const track = await requestTrack("audio", audioInputIdRef.current);
+      track.enabled = true;
+      mergeTrack(track);
+      audioJoinedRef.current = true;
+      mutedRef.current = false;
+      setAudioJoined(true);
+      setIsMuted(false);
+      setAudioAvailable(true);
+      setError(clearOwnedError("audio"));
+      void refreshDevices();
+      return true;
+    } catch (cause: unknown) {
+      setAudioAvailable(false);
+      setError(kindError("audio", cause));
+      return false;
+    } finally {
+      joinPendingRef.current = false;
+    }
+  }, [mergeTrack, refreshDevices, requestTrack]);
+
+  /** Brings the camera up: reuses an existing track or requests permission. */
+  const turnOnVideo = useCallback(async (): Promise<boolean> => {
+    if (videoOnRef.current) return true;
+    if (cameraPendingRef.current) return false;
+
+    const existing = streamRef.current?.getVideoTracks()[0];
+    if (existing) {
+      existing.enabled = true;
+      videoOnRef.current = true;
+      setIsVideoOn(true);
+      return true;
+    }
+
+    if (!canGetUserMedia()) {
+      setVideoAvailable(false);
+      setError(MEDIA_ERROR);
+      return false;
+    }
+    cameraPendingRef.current = true;
+    try {
+      const track = await requestTrack("video", videoInputIdRef.current);
+      track.enabled = true;
+      mergeTrack(track);
+      videoOnRef.current = true;
+      setIsVideoOn(true);
+      setVideoAvailable(true);
+      setError(clearOwnedError("video"));
+      void refreshDevices();
+      return true;
+    } catch (cause: unknown) {
+      setVideoAvailable(false);
+      setError(kindError("video", cause));
+      return false;
+    } finally {
+      cameraPendingRef.current = false;
+    }
+  }, [mergeTrack, refreshDevices, requestTrack]);
+
+  /** Swaps the live microphone for another device, keeping the mute choice. */
+  const swapAudioInput = useCallback(
+    async (deviceId: string | null): Promise<void> => {
+      try {
+        const track = await requestTrack("audio", deviceId);
+        track.enabled = !mutedRef.current;
+        mergeTrack(track);
+        setAudioAvailable(true);
+        setError(clearOwnedError("audio"));
+        void refreshDevices();
       } catch (cause: unknown) {
-        streamRef.current = null;
-        setStream(null);
-        setIsMuted(true);
-        setIsVideoOn(false);
         setAudioAvailable(false);
-        setVideoAvailable(false);
-        setError(friendlyError(cause));
+        setError(kindError("audio", cause));
       }
     },
-    [adoptStream, requestStream]
+    [mergeTrack, refreshDevices, requestTrack]
+  );
+
+  /** Swaps the camera for another device, keeping the on/off choice. */
+  const swapVideoInput = useCallback(
+    async (deviceId: string | null): Promise<void> => {
+      try {
+        const track = await requestTrack("video", deviceId);
+        track.enabled = videoOnRef.current;
+        mergeTrack(track);
+        setVideoAvailable(true);
+        setError(clearOwnedError("video"));
+        void refreshDevices();
+      } catch (cause: unknown) {
+        setVideoAvailable(false);
+        setError(kindError("video", cause));
+      }
+    },
+    [mergeTrack, refreshDevices, requestTrack]
   );
 
   const setAudioInput = useCallback(
@@ -351,9 +450,10 @@ export function useMediaDevices(): MediaDevicesState {
       audioInputIdRef.current = deviceId;
       setSelectedAudioInputId(deviceId);
       writeStored(STORAGE_KEYS.audioInput, deviceId);
-      void acquire({ audioInputId: deviceId });
+      // Before Join Audio the choice only applies to the future request.
+      if (audioJoinedRef.current) void swapAudioInput(deviceId);
     },
-    [acquire]
+    [swapAudioInput]
   );
 
   const setVideoInput = useCallback(
@@ -361,9 +461,10 @@ export function useMediaDevices(): MediaDevicesState {
       videoInputIdRef.current = deviceId;
       setSelectedVideoInputId(deviceId);
       writeStored(STORAGE_KEYS.videoInput, deviceId);
-      void acquire({ videoInputId: deviceId });
+      // Without a camera track there is nothing to swap; applied on Start Video.
+      if (streamRef.current?.getVideoTracks().length) void swapVideoInput(deviceId);
     },
-    [acquire]
+    [swapVideoInput]
   );
 
   const setAudioOutput = useCallback((deviceId: string) => {
@@ -372,31 +473,52 @@ export function useMediaDevices(): MediaDevicesState {
   }, []);
 
   const setMuted = useCallback((next: boolean) => {
+    // Mute is meaningless before the microphone is joined; joining audio is
+    // the only way to bring the mic up (and it starts unmuted, like Zoom).
+    if (!audioJoinedRef.current) return;
     mutedRef.current = next;
-    const current = streamRef.current;
-    current?.getAudioTracks().forEach((track) => {
+    streamRef.current?.getAudioTracks().forEach((track) => {
       track.enabled = !next;
     });
     setIsMuted(next);
   }, []);
 
-  const setVideoOn = useCallback((next: boolean) => {
-    videoOnRef.current = next;
-    const current = streamRef.current;
-    current?.getVideoTracks().forEach((track) => {
-      track.enabled = next;
-    });
-    setIsVideoOn(next);
-  }, []);
+  const setVideoOn = useCallback(
+    (next: boolean): Promise<void> => {
+      if (next) return turnOnVideo().then(() => undefined);
+      videoOnRef.current = false;
+      streamRef.current?.getVideoTracks().forEach((track) => {
+        track.enabled = false;
+      });
+      setIsVideoOn(false);
+      return Promise.resolve();
+    },
+    [turnOnVideo]
+  );
 
   const stop = useCallback(() => {
     const current = streamRef.current;
     streamRef.current = null;
     current?.getTracks().forEach((track) => track.stop());
+    // Reset the join flags so a retry starts from the same off-by-default
+    // state as the first entry.
+    audioJoinedRef.current = false;
+    mutedRef.current = true;
+    videoOnRef.current = false;
+    joinPendingRef.current = false;
+    cameraPendingRef.current = false;
+    setStream(null);
+    setAudioJoined(false);
+    setIsMuted(true);
+    setIsVideoOn(false);
+    setAudioAvailable(true);
+    setVideoAvailable(true);
+    setError(null);
   }, []);
 
   return {
     stream,
+    audioJoined,
     isMuted,
     isVideoOn,
     audioAvailable,
@@ -414,6 +536,7 @@ export function useMediaDevices(): MediaDevicesState {
     setAudioInput,
     setVideoInput,
     setAudioOutput,
+    joinAudio,
     setMuted,
     setVideoOn,
     stop,
