@@ -30,10 +30,12 @@ class ParticipantOut(ParticipantBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    meeting_id: str
+    # Internal meetings.id (the Participant FK), not the public meeting id.
+    meeting_id: int
+    # Participant has no user column yet; kept for contract compatibility.
     user_id: int | None = None
     is_host: bool
-    joined_at: datetime
+    joined_at: datetime | None = None
     left_at: datetime | None = None
 
 

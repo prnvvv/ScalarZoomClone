@@ -1,0 +1,7 @@
+[project]
+name = "scalarzoomclone"
+version = "0.1.0"
+description = "Zoom-like video conferencing platform (FastAPI + Next.js)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []

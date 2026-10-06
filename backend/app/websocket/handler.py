@@ -50,10 +50,20 @@ class RealtimeSession:
     binding rather than trusted.
     """
 
-    __slots__ = ("meeting_id", "participant_id", "is_host", "joined", "closing")
+    __slots__ = (
+        "meeting_id",
+        "meeting_pk",
+        "participant_id",
+        "is_host",
+        "joined",
+        "closing",
+    )
 
     def __init__(self, meeting_id: str) -> None:
+        # meeting_id is the public 9-digit id from the URL; meeting_pk is the
+        # internal meetings.id that Participant.meeting_id refers to.
         self.meeting_id = meeting_id
+        self.meeting_pk: int | None = None
         self.participant_id: int | None = None
         self.is_host: bool = False
         self.joined: bool = False
@@ -159,7 +169,7 @@ async def _dispatch(
         elif isinstance(message, MediaStateMessage):
             await _handle_media_state(websocket, session, manager, db, message)
         elif isinstance(message, ScreenShareMessage):
-            await _handle_screen_share(websocket, session, manager, message)
+            await _handle_screen_share(websocket, session, manager, db, message)
         elif isinstance(message, MuteParticipantMessage):
             await _handle_mute_participant(websocket, session, manager, db, message)
         elif isinstance(message, RemoveParticipantMessage):
@@ -224,6 +234,7 @@ async def _handle_join(
         return
 
     participant_id, is_host = existing
+    session.meeting_pk = meeting.id
     session.participant_id = participant_id
     session.is_host = is_host
     session.joined = True
@@ -350,7 +361,8 @@ async def _handle_signal(
     target = await run_in_threadpool(
         participant_service.get_participant, db, message.target_id
     )
-    if target is None or target.meeting_id != session.meeting_id:
+    # Participant.meeting_id is the internal PK, never the public id.
+    if target is None or target.meeting_id != session.meeting_pk:
         await _send_error(
             websocket,
             ErrorCode.TARGET_NOT_FOUND,
@@ -458,6 +470,7 @@ async def _handle_screen_share(
     websocket: WebSocket,
     session: RealtimeSession,
     manager: ConnectionManager,
+    db: Session,
     message: ScreenShareMessage,
 ) -> None:
     if message.participant_id != session.participant_id:
@@ -575,7 +588,8 @@ async def _authorize_host_action(
     target = await run_in_threadpool(
         participant_service.get_participant, db, message.target_id
     )
-    if target is None or target.meeting_id != session.meeting_id:
+    # Participant.meeting_id is the internal PK, never the public id.
+    if target is None or target.meeting_id != session.meeting_pk:
         await _send_error(
             websocket,
             ErrorCode.TARGET_NOT_FOUND,
@@ -595,7 +609,8 @@ async def _handle_end_meeting(
     participant = await run_in_threadpool(
         participant_service.get_participant, db, session.participant_id
     )
-    if participant is None or participant.meeting_id != session.meeting_id:
+    # Participant.meeting_id is the internal PK, never the public id.
+    if participant is None or participant.meeting_id != session.meeting_pk:
         await _send_error(
             websocket,
             ErrorCode.NOT_A_PARTICIPANT,
