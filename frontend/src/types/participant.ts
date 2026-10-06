@@ -51,9 +51,3 @@ export interface ParticipantPatch {
   is_video_on?: boolean;
   screen_share?: boolean;
 }
-
-export type ConnectionState =
-  | "connecting"
-  | "connected"
-  | "reconnecting"
-  | "disconnected";
