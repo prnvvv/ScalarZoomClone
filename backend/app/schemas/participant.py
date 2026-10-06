@@ -5,8 +5,12 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 
+# Matches models.participant.Participant.display_name (String(100)).
+MAX_DISPLAY_NAME_LENGTH = 100
+
+
 class ParticipantBase(BaseModel):
-    display_name: str = Field(min_length=1, max_length=120)
+    display_name: str = Field(min_length=1, max_length=MAX_DISPLAY_NAME_LENGTH)
     is_muted: bool = False
     is_video_on: bool = True
 
@@ -21,7 +25,9 @@ class ParticipantCreate(ParticipantBase):
 
 
 class ParticipantUpdate(BaseModel):
-    display_name: str | None = Field(default=None, min_length=1, max_length=120)
+    display_name: str | None = Field(
+        default=None, min_length=1, max_length=MAX_DISPLAY_NAME_LENGTH
+    )
     is_muted: bool | None = None
     is_video_on: bool | None = None
 

@@ -65,7 +65,8 @@ def validate_duration(value: int | None) -> int | None:
     """Return a duration in minutes within the supported range."""
     if value is None:
         return None
-    if not isinstance(value, int):
+    # bool is a subclass of int; reject it so true/false never means 1/0 minutes.
+    if isinstance(value, bool) or not isinstance(value, int):
         raise InvalidRequestError("Duration must be a whole number of minutes")
     if not MIN_DURATION_MINUTES <= value <= MAX_DURATION_MINUTES:
         raise InvalidRequestError(
