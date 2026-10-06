@@ -21,7 +21,10 @@ export default function DashboardPage() {
   const [today, setToday] = React.useState<Date | null>(null);
 
   React.useEffect(() => {
-    setToday(new Date());
+    // Deferred so the first client render matches the server HTML; reading the
+    // clock during render would risk a hydration mismatch at a date boundary.
+    const id = window.setTimeout(() => setToday(new Date()), 0);
+    return () => window.clearTimeout(id);
   }, []);
 
   return (
