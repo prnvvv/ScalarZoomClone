@@ -6,8 +6,16 @@ from sqlalchemy.orm import Session
 from app.database.session import get_db
 from app.schemas.participant import ParticipantCreate, ParticipantOut
 from app.services import participant_service
+from app.services.exceptions import InvalidRequestError, MeetingNotFoundError
 
 router = APIRouter(prefix="/api", tags=["participants"])
+
+
+def _http_error(exc: Exception) -> HTTPException:
+    """Translate expected service failures into client-facing responses."""
+    if isinstance(exc, MeetingNotFoundError):
+        return HTTPException(status.HTTP_404_NOT_FOUND, str(exc) or "Meeting not found")
+    return HTTPException(status.HTTP_400_BAD_REQUEST, str(exc) or "Invalid request")
 
 
 @router.get(
@@ -20,11 +28,14 @@ def list_meeting_participants(
     db: Session = Depends(get_db),
 ) -> list[ParticipantOut]:
     """Return persisted participants for a meeting."""
-    participants = participant_service.get_meeting_participants(
-        db,
-        meeting_id,
-        active_only=active_only,
-    )
+    try:
+        participants = participant_service.get_meeting_participants(
+            db,
+            meeting_id,
+            active_only=active_only,
+        )
+    except (MeetingNotFoundError, InvalidRequestError) as exc:
+        raise _http_error(exc) from exc
     return [ParticipantOut.model_validate(row) for row in participants]
 
 
@@ -39,12 +50,15 @@ def add_meeting_participant(
     db: Session = Depends(get_db),
 ) -> ParticipantOut:
     """Create a participant record for a meeting."""
-    participant = participant_service.create_participant(
-        db,
-        meeting_id=meeting_id,
-        display_name=payload.display_name,
-        is_host=False,
-    )
+    try:
+        participant = participant_service.create_participant(
+            db,
+            meeting_id=meeting_id,
+            display_name=payload.display_name,
+            is_host=False,
+        )
+    except (MeetingNotFoundError, InvalidRequestError) as exc:
+        raise _http_error(exc) from exc
     return ParticipantOut.model_validate(participant)
 
 
