@@ -12,6 +12,12 @@ interface UseWebRtcOptions {
   selfId: number | null;
   localStream: MediaStream | null;
   send: (message: ClientMessage) => void;
+  /**
+   * Fired when the user stops sharing through the browser's own UI (the
+   * floating "Stop sharing" bar) so the session can broadcast the change.
+   * Not called for a `stopScreenShare()` triggered by the app itself.
+   */
+  onScreenShareStopped?: () => void;
 }
 
 interface PeerEntry {
@@ -26,11 +32,17 @@ export interface WebRtcState {
   handleSignal: (message: SignalPayloadMessage) => Promise<void>;
   closePeer: (peerId: number) => void;
   resetPeers: () => void;
-  /** Start screen sharing; replaces the video track in all peer connections. */
-  startScreenShare: () => Promise<void>;
-  /** Stop screen sharing; restores the camera video track. */
+  /**
+   * Ask the browser for screen/window/tab capture. Resolves `true` only when
+   * a usable video track was acquired — a cancelled picker resolves `false`
+   * and leaves every piece of state untouched.
+   */
+  startScreenShare: () => Promise<boolean>;
+  /** Stop screen sharing and restore the camera track. Safe to call twice. */
   stopScreenShare: () => void;
   isScreenSharing: boolean;
+  /** The live display-media stream, for rendering a local share preview. */
+  screenStream: MediaStream | null;
 }
 
 /**
@@ -43,15 +55,18 @@ export function useWebRTC({
   selfId,
   localStream,
   send,
+  onScreenShareStopped,
 }: UseWebRtcOptions): WebRtcState {
   const peersRef = useRef(new Map<number, PeerEntry>());
   const selfIdRef = useRef(selfId);
   const sendRef = useRef(send);
   const [remoteStreams, setRemoteStreams] = useState<Record<number, MediaStream>>({});
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
 
   const cameraTrackRef = useRef<MediaStreamTrack | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
+  const onScreenShareStoppedRef = useRef(onScreenShareStopped);
 
   useEffect(() => {
     selfIdRef.current = selfId;
@@ -59,6 +74,9 @@ export function useWebRTC({
   useEffect(() => {
     sendRef.current = send;
   }, [send]);
+  useEffect(() => {
+    onScreenShareStoppedRef.current = onScreenShareStopped;
+  }, [onScreenShareStopped]);
 
   const removePeer = useCallback((peerId: number) => {
     const entry = peersRef.current.get(peerId);
@@ -77,6 +95,15 @@ export function useWebRTC({
       delete next[peerId];
       return next;
     });
+  }, []);
+
+  const replaceVideoTrack = useCallback((newTrack: MediaStreamTrack | null) => {
+    for (const { pc } of peersRef.current.values()) {
+      const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+      if (sender) {
+        void sender.replaceTrack(newTrack).catch(() => undefined);
+      }
+    }
   }, []);
 
   const ensurePeer = useCallback(
@@ -214,9 +241,18 @@ export function useWebRTC({
 
   // Attach the local stream when it arrives after peers exist. Switching a
   // device mid-meeting replaces the track on the existing sender instead of
-  // adding a second one, so no renegotiation is needed.
+  // adding a second one, so no renegotiation is needed. While a screen share
+  // is live the camera must NOT take the sender back — the screen track owns
+  // it until sharing ends, and the remembered camera track is refreshed here
+  // so a device switch during a share still restores correctly.
   useEffect(() => {
     if (!localStream) return;
+    const cameraTrack = localStream.getVideoTracks()[0] ?? null;
+    if (screenStreamRef.current) {
+      cameraTrackRef.current = cameraTrack;
+      return;
+    }
+    cameraTrackRef.current = cameraTrack;
     for (const { pc } of peersRef.current.values()) {
       for (const track of localStream.getTracks()) {
         const sender = pc
@@ -244,65 +280,59 @@ export function useWebRTC({
     };
   }, []);
 
-  const replaceVideoTrack = useCallback(
-    (newTrack: MediaStreamTrack | null) => {
-      for (const { pc } of peersRef.current.values()) {
-        const sender = pc
-          .getSenders()
-          .find((s) => s.track?.kind === "video");
-        if (sender) {
-          void sender.replaceTrack(newTrack).catch(() => undefined);
-        }
-      }
-    },
-    []
-  );
-
   const stopScreenShare = useCallback(() => {
-    if (!isScreenSharing) return;
-    if (screenStreamRef.current) {
-      screenStreamRef.current.getTracks().forEach((t) => t.stop());
-      screenStreamRef.current = null;
-    }
+    if (!screenStreamRef.current) return;
+    screenStreamRef.current.getTracks().forEach((track) => {
+      track.onended = null;
+      track.stop();
+    });
+    screenStreamRef.current = null;
+    setScreenStream(null);
     replaceVideoTrack(cameraTrackRef.current);
     setIsScreenSharing(false);
-  }, [isScreenSharing, replaceVideoTrack]);
+  }, [replaceVideoTrack]);
 
-  const startScreenShare = useCallback(async () => {
-    if (isScreenSharing) return;
+  const startScreenShare = useCallback(async (): Promise<boolean> => {
+    if (screenStreamRef.current) return false;
+    if (
+      typeof navigator === "undefined" ||
+      typeof navigator.mediaDevices?.getDisplayMedia !== "function"
+    ) {
+      return false;
+    }
+
+    let display: MediaStream;
     try {
-      const displayMedia = await navigator.mediaDevices.getDisplayMedia({
+      display = await navigator.mediaDevices.getDisplayMedia({
         video: true,
         audio: false,
       });
-      const screenTrack = displayMedia.getVideoTracks()[0];
-      if (!screenTrack) {
-        displayMedia.getTracks().forEach((t) => t.stop());
-        return;
-      }
-
-      // Preserve the camera track so we can restore it later.
-      if (localStream) {
-        cameraTrackRef.current = localStream.getVideoTracks()[0] ?? null;
-      }
-
-      screenStreamRef.current = displayMedia;
-      replaceVideoTrack(screenTrack);
-      setIsScreenSharing(true);
-
-      // When the user stops sharing via the browser's own UI (the floating bar),
-      // we need to clean up and restore the camera.
-      screenTrack.onended = () => {
-        if (isScreenSharing) {
-          stopScreenShare();
-        }
-      };
     } catch {
-      // User denied permission or another error; silently ignore.
+      // Picker cancelled or permission denied: nothing changed yet.
+      return false;
     }
-  },
-  [isScreenSharing, localStream, stopScreenShare, replaceVideoTrack]
-);
+
+    const screenTrack = display.getVideoTracks()[0];
+    if (!screenTrack) {
+      display.getTracks().forEach((track) => track.stop());
+      return false;
+    }
+
+    cameraTrackRef.current = localStream?.getVideoTracks()[0] ?? null;
+    screenStreamRef.current = display;
+    setScreenStream(display);
+    replaceVideoTrack(screenTrack);
+    setIsScreenSharing(true);
+
+    // Stopping from the browser's own floating bar must look identical to
+    // stopping from the app: restore the camera and tell the session.
+    screenTrack.onended = () => {
+      if (screenStreamRef.current !== display) return;
+      stopScreenShare();
+      onScreenShareStoppedRef.current?.();
+    };
+    return true;
+  }, [localStream, replaceVideoTrack, stopScreenShare]);
 
   return {
     remoteStreams,
@@ -313,6 +343,7 @@ export function useWebRTC({
     startScreenShare,
     stopScreenShare,
     isScreenSharing,
+    screenStream,
   };
 }
 
