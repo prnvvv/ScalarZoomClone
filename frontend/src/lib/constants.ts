@@ -51,6 +51,22 @@ export const STORAGE_KEYS = {
   audioInput: "scalarmeet.audio_input",
   videoInput: "scalarmeet.video_input",
   audioOutput: "scalarmeet.audio_output",
+  /** Room layout + view preferences, shared across meetings. */
+  roomPrefs: "scalarmeet.room_prefs",
+  /** Pinned participant, per meeting (pin is a local-only view choice). */
+  pinnedParticipant: (meetingId: string) => `scalarmeet.pinned.${meetingId}`,
 } as const;
+
+/** Reaction picker set — transient, never stored as participant state. */
+export const REACTION_EMOJIS = [
+  "👍",
+  "❤️",
+  "😂",
+  "👏",
+  "🎉",
+  "😮",
+  "😢",
+  "✋",
+] as const;
 
 export const APP_NAME = "Scalar Meet";
