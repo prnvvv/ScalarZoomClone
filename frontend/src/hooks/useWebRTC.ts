@@ -26,6 +26,11 @@ export interface WebRtcState {
   handleSignal: (message: SignalPayloadMessage) => Promise<void>;
   closePeer: (peerId: number) => void;
   resetPeers: () => void;
+  /** Start screen sharing; replaces the video track in all peer connections. */
+  startScreenShare: () => Promise<void>;
+  /** Stop screen sharing; restores the camera video track. */
+  stopScreenShare: () => void;
+  isScreenSharing: boolean;
 }
 
 /**
@@ -43,6 +48,10 @@ export function useWebRTC({
   const selfIdRef = useRef(selfId);
   const sendRef = useRef(send);
   const [remoteStreams, setRemoteStreams] = useState<Record<number, MediaStream>>({});
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+
+  const cameraTrackRef = useRef<MediaStreamTrack | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     selfIdRef.current = selfId;
@@ -227,10 +236,84 @@ export function useWebRTC({
     return () => {
       for (const { pc } of peers.values()) pc.close();
       peers.clear();
+      cameraTrackRef.current = null;
+      if (screenStreamRef.current) {
+        screenStreamRef.current.getTracks().forEach((t) => t.stop());
+        screenStreamRef.current = null;
+      }
     };
   }, []);
 
-  return { remoteStreams, syncPeers, handleSignal, closePeer: removePeer, resetPeers };
+  const replaceVideoTrack = useCallback(
+    (newTrack: MediaStreamTrack | null) => {
+      for (const { pc } of peersRef.current.values()) {
+        const sender = pc
+          .getSenders()
+          .find((s) => s.track?.kind === "video");
+        if (sender) {
+          void sender.replaceTrack(newTrack).catch(() => undefined);
+        }
+      }
+    },
+    []
+  );
+
+  const stopScreenShare = useCallback(() => {
+    if (!isScreenSharing) return;
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach((t) => t.stop());
+      screenStreamRef.current = null;
+    }
+    replaceVideoTrack(cameraTrackRef.current);
+    setIsScreenSharing(false);
+  }, [isScreenSharing, replaceVideoTrack]);
+
+  const startScreenShare = useCallback(async () => {
+    if (isScreenSharing) return;
+    try {
+      const displayMedia = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false,
+      });
+      const screenTrack = displayMedia.getVideoTracks()[0];
+      if (!screenTrack) {
+        displayMedia.getTracks().forEach((t) => t.stop());
+        return;
+      }
+
+      // Preserve the camera track so we can restore it later.
+      if (localStream) {
+        cameraTrackRef.current = localStream.getVideoTracks()[0] ?? null;
+      }
+
+      screenStreamRef.current = displayMedia;
+      replaceVideoTrack(screenTrack);
+      setIsScreenSharing(true);
+
+      // When the user stops sharing via the browser's own UI (the floating bar),
+      // we need to clean up and restore the camera.
+      screenTrack.onended = () => {
+        if (isScreenSharing) {
+          stopScreenShare();
+        }
+      };
+    } catch {
+      // User denied permission or another error; silently ignore.
+    }
+  },
+  [isScreenSharing, localStream, stopScreenShare, replaceVideoTrack]
+);
+
+  return {
+    remoteStreams,
+    syncPeers,
+    handleSignal,
+    closePeer: removePeer,
+    resetPeers,
+    startScreenShare,
+    stopScreenShare,
+    isScreenSharing,
+  };
 }
 
 function entryCandidates(
