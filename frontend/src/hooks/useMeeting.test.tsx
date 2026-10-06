@@ -571,6 +571,32 @@ describe("useMeeting failures", () => {
     expect(result.current.failure).not.toContain("500");
   });
 
+  it("clamps an over-long display name before joining", async () => {
+    // A name above the server's 100-char cap that reaches the socket would be
+    // stored, and then GET /participants would 500 for the whole room.
+    renderSession("x".repeat(140));
+    await waitFor(() => expect(acquire).toHaveBeenCalled());
+    await connect();
+
+    const join = sentOfType("join")[0] as Extract<
+      ClientMessage,
+      { type: "join" }
+    >;
+    expect(join.display_name).toHaveLength(100);
+    expect(join.display_name.length).toBeLessThanOrEqual(100);
+    expect(joinMeeting).toHaveBeenCalledWith(MEETING_ID, {
+      display_name: "x".repeat(100),
+    });
+  });
+
+  it("trims whitespace around the display name", async () => {
+    renderSession("   Ann   ");
+    await waitFor(() => expect(acquire).toHaveBeenCalled());
+    await connect();
+
+    expect(sentOfType("join")[0]).toMatchObject({ display_name: "Ann" });
+  });
+
   it("exposes devices for the room settings panel", async () => {
     const { result } = renderSession();
     expect(result.current.devices).toBeTruthy();
