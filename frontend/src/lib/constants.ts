@@ -33,7 +33,13 @@ export const MEETING_WS_PATH = (meetingId: string) =>
 
 export const REQUEST_TIMEOUT_MS = 12_000;
 
-export const MAX_MEETING_ID_LENGTH = 32;
+/**
+ * Public meeting IDs are exactly nine digits with no leading zero
+ * (`backend/app/utils/meeting_id.py`). `MEETING_ID_MAX_INPUT` is only the
+ * widest string we will accept while typing before validating.
+ */
+export const MEETING_ID_LENGTH = 9;
+export const MEETING_ID_MAX_INPUT = 32;
 export const MAX_TITLE_LENGTH = 255;
 export const MAX_DESCRIPTION_LENGTH = 5000;
 export const MAX_DURATION_MINUTES = 1440;
