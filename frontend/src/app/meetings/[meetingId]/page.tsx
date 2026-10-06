@@ -1,0 +1,243 @@
+"use client";
+
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import { useSyncExternalStore, useState } from "react";
+import { useToast } from "@/components/common/ToastProvider";
+import { AlertIcon, CopyIcon, UserIcon } from "@/components/icons";
+import { ControlBar } from "@/components/meeting/ControlBar";
+import { ParticipantsPanel } from "@/components/meeting/ParticipantsPanel";
+import { VideoTile } from "@/components/meeting/VideoTile";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useMeetingRoom } from "@/hooks/useMeetingRoom";
+import { STORAGE_KEYS } from "@/lib/constants";
+import {
+  buildInviteUrl,
+  copyText,
+  cx,
+  formatDateShort,
+  formatTime,
+} from "@/lib/utils";
+
+/** sessionStorage is not observable; re-read on any re-render instead. */
+const subscribeToSessionName = () => () => {};
+
+function gridCountClass(count: number): string {
+  if (count <= 1) return "room__grid--count-1";
+  if (count === 2) return "room__grid--count-2";
+  if (count === 3) return "room__grid--count-3";
+  if (count === 4) return "room__grid--count-4";
+  return "room__grid--count-5plus";
+}
+
+function RoomScreen({
+  title,
+  body,
+  children,
+}: {
+  title: string;
+  body: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="room room-loading">
+      <div className="room-overlay-screen">
+        <span className="room-overlay-screen__icon room-overlay-screen__icon--danger">
+          <AlertIcon size={24} />
+        </span>
+        <div className="room-overlay-screen__title">{title}</div>
+        <div className="room-overlay-screen__text">{body}</div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export default function MeetingRoomPage() {
+  const params = useParams<{ meetingId: string }>();
+  const meetingId = params.meetingId;
+  const router = useRouter();
+  const { toast } = useToast();
+  const { user } = useCurrentUser();
+  const { meeting, participants, loading, error, notFound, refresh } =
+    useMeetingRoom(meetingId);
+
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVideoOn, setIsVideoOn] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(false);
+
+  const storedName = useSyncExternalStore(
+    subscribeToSessionName,
+    () => window.sessionStorage.getItem(STORAGE_KEYS.displayName) ?? "",
+    () => ""
+  );
+  const localName = storedName || user?.name || "You";
+
+  const copyInvite = async () => {
+    const ok = await copyText(buildInviteUrl(meetingId));
+    toast(
+      ok ? "Invite link copied" : "Could not copy the invite link",
+      ok ? "success" : "error"
+    );
+  };
+
+  const leaveRoom = () => {
+    router.push("/dashboard");
+  };
+
+  if (loading) {
+    return (
+      <div className="room room-loading">
+        <span className="spinner" aria-hidden="true" />
+        Loading meeting…
+      </div>
+    );
+  }
+
+  if (notFound) {
+    return (
+      <RoomScreen
+        title="Meeting not found"
+        body="We could not find that meeting. Check the link and try again."
+      >
+        <Link href="/dashboard" className="btn btn--primary">
+          Back to dashboard
+        </Link>
+      </RoomScreen>
+    );
+  }
+
+  if (error) {
+    return (
+      <RoomScreen title="Could not open the meeting" body={error}>
+        <button
+          type="button"
+          className="btn btn--primary"
+          onClick={() => void refresh()}
+        >
+          Try again
+        </button>
+        <Link href="/dashboard" className="btn btn--ghost">
+          Back to dashboard
+        </Link>
+      </RoomScreen>
+    );
+  }
+
+  if (meeting && (meeting.status === "ended" || meeting.status === "cancelled")) {
+    return (
+      <RoomScreen
+        title="This meeting has ended"
+        body={`${meeting.title} is no longer running.`}
+      >
+        <Link href="/dashboard" className="btn btn--primary">
+          Back to dashboard
+        </Link>
+      </RoomScreen>
+    );
+  }
+
+  if (!meeting) {
+    return null;
+  }
+
+  const isLocalHost = user?.id === meeting.host_id;
+  const others = participants.filter((p) => p.display_name !== localName);
+  const tileCount = 1 + others.length;
+  const scheduledNotice = meeting.status === "scheduled";
+
+  return (
+    <div className="room">
+      <header className="room__header">
+        <div className="room__heading">
+          <div className="room__title">{meeting.title}</div>
+          <div className="room__subtitle">
+            <span className="room__id">{meeting.meeting_id}</span>
+            <span>
+              {formatDateShort(meeting.start_time)} ·{" "}
+              {formatTime(meeting.start_time)}
+            </span>
+          </div>
+        </div>
+        <div className="room__header-actions">
+          {meeting.status === "active" ? (
+            <span className="room__chip room__chip--live">Live</span>
+          ) : null}
+          <button
+            type="button"
+            className="room__chip room__chip--hide-mobile"
+            onClick={() => void copyInvite()}
+            aria-label="Copy invite link"
+          >
+            <CopyIcon size={14} />
+            Copy invite
+          </button>
+        </div>
+      </header>
+
+      {scheduledNotice ? (
+        <div className="room-notice">
+          <AlertIcon size={16} />
+          Scheduled for {formatDateShort(meeting.start_time)} at{" "}
+          {formatTime(meeting.start_time)}
+        </div>
+      ) : null}
+
+      <main className="room__stage">
+        <div className={cx("room__grid", gridCountClass(tileCount))}>
+          <VideoTile
+            name={`${localName} (You)`}
+            isMuted={isMuted}
+            isHost={isLocalHost}
+          />
+
+          {others.map((participant) => (
+            <VideoTile
+              key={participant.id}
+              name={participant.display_name}
+              isMuted={participant.is_muted}
+              isHost={participant.is_host}
+            />
+          ))}
+
+          {others.length === 0 ? (
+            <div className="tile">
+              <div className="tile__placeholder">
+                <div className="tile__avatar">
+                  <UserIcon size={24} />
+                </div>
+              </div>
+              <span className="tile__name">Waiting for others…</span>
+            </div>
+          ) : null}
+        </div>
+      </main>
+
+      <ControlBar
+        isMuted={isMuted}
+        isVideoOn={isVideoOn}
+        participantsOpen={panelOpen}
+        onToggleMute={() => setIsMuted((m) => !m)}
+        onToggleVideo={() => setIsVideoOn((v) => !v)}
+        onToggleParticipants={() => setPanelOpen((o) => !o)}
+        onLeave={leaveRoom}
+      />
+
+      {panelOpen ? (
+        <>
+          <div
+            className="room-panel__backdrop"
+            onClick={() => setPanelOpen(false)}
+            aria-hidden="true"
+          />
+          <ParticipantsPanel
+            participants={participants}
+            meetingId={meetingId}
+            localName={localName}
+            onClose={() => setPanelOpen(false)}
+          />
+        </>
+      ) : null}
+    </div>
+  );
+}
