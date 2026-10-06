@@ -537,11 +537,13 @@
   gap: 6px;
 }
 
-.room-device__field .field__label {
+/* Dark selects only inside the room popover — the settings page reuses the
+   same component on its light surface. */
+.room-settings .field__label {
   color: var(--room-text-secondary);
 }
 
-.room-device__select {
+.room-settings .select {
   background: var(--room-surface-alt);
   border-color: var(--room-border);
   color: var(--room-text);
