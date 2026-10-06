@@ -1,0 +1,9 @@
+[project]
+name = "scalarzoomclone"
+version = "0.1.0"
+description = "Zoom-like video conferencing platform (FastAPI + Next.js)"
+readme = "README.md"
+requires-python = ">=3.10"
+# Backend dependencies live in backend/requirements.txt, which CI installs
+# directly. Keep that file authoritative to avoid two drifting lists.
+dependencies = []

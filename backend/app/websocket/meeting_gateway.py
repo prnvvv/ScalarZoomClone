@@ -44,10 +44,6 @@ def get_meeting(db: Session, meeting_id: str) -> Any | None:
     return db.scalars(stmt).first()
 
 
-def meeting_exists(db: Session, meeting_id: str) -> bool:
-    return get_meeting(db, meeting_id) is not None
-
-
 def _status_value(meeting: Any) -> str:
     status = getattr(meeting, "status", None)
     if status is None:
