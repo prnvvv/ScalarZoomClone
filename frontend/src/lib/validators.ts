@@ -2,11 +2,27 @@ import {
   MAX_DESCRIPTION_LENGTH,
   MAX_DISPLAY_NAME_LENGTH,
   MAX_DURATION_MINUTES,
-  MAX_MEETING_ID_LENGTH,
   MAX_TITLE_LENGTH,
+  MEETING_ID_LENGTH,
+  MEETING_ID_MAX_INPUT,
 } from "./constants";
 
-const MEETING_ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
+/**
+ * The public meeting ID is exactly nine digits with no leading zero — the
+ * server rejects anything else with `Meeting ID must be a 9-digit number`.
+ * Validating client-side stops users submitting IDs that will 400.
+ */
+const MEETING_ID_PATTERN = /^[1-9]\d{8}$/;
+
+/**
+ * A shape loose enough to recognise "the user typed something that might be a
+ * meeting ID". Extraction stays permissive so the field echoes the input back
+ * and `validateJoinInput` can show a precise message; only
+ * {@link isValidMeetingId} judges validity.
+ */
+const MEETING_ID_CANDIDATE = new RegExp(
+  `^[A-Za-z0-9_-]{1,${MEETING_ID_MAX_INPUT}}$`
+);
 
 export function isValidMeetingId(value: string): boolean {
   return MEETING_ID_PATTERN.test(value.trim());
@@ -20,7 +36,7 @@ export function extractMeetingId(input: string): string {
   const raw = input.trim();
   if (!raw) return "";
 
-  if (MEETING_ID_PATTERN.test(raw)) return raw;
+  if (MEETING_ID_CANDIDATE.test(raw)) return raw;
 
   try {
     const url = new URL(raw);
@@ -55,7 +71,7 @@ export function validateJoinInput(values: {
   } else if (!isValidMeetingId(id)) {
     errors.push({
       field: "meetingId",
-      message: `Meeting IDs are 1-${MAX_MEETING_ID_LENGTH} letters or numbers.`,
+      message: `Meeting IDs are ${MEETING_ID_LENGTH} digits, with no leading zero.`,
     });
   }
 
