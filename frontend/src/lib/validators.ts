@@ -174,6 +174,19 @@ export function buildStartTimestamp(date: string, time: string): string | null {
   return composed.toISOString();
 }
 
+/**
+ * Clamps a display name to the server's limit.
+ *
+ * The REST and persistence layers cap names at 100 characters, but the socket
+ * `join` schema accepts more. A name above the cap that reaches the socket is
+ * stored, and then `GET /participants` cannot serialise it and returns 500 for
+ * the whole room. Clamping here means no entry path — including a direct link
+ * to `/meetings/{id}` that skips the join form — can trigger that.
+ */
+export function clampDisplayName(name: string): string {
+  return name.trim().slice(0, MAX_DISPLAY_NAME_LENGTH);
+}
+
 export function toLocalDateInputValue(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
