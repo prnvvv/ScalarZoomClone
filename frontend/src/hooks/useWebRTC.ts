@@ -58,6 +58,11 @@ export function useWebRTC({
       peersRef.current.delete(peerId);
     }
     setRemoteStreams((current) => {
+      const stream = current[peerId];
+      if (stream) {
+        // Release the remote media; local tracks are shared and stay alive.
+        stream.getTracks().forEach((track) => track.stop());
+      }
       if (!(peerId in current)) return current;
       const next = { ...current };
       delete next[peerId];
@@ -198,18 +203,22 @@ export function useWebRTC({
     }
   }, [removePeer]);
 
-  // Attach the local stream when it arrives after peers exist.
+  // Attach the local stream when it arrives after peers exist. Switching a
+  // device mid-meeting replaces the track on the existing sender instead of
+  // adding a second one, so no renegotiation is needed.
   useEffect(() => {
     if (!localStream) return;
     for (const { pc } of peersRef.current.values()) {
-      const alreadyAttached = pc.getSenders().some(
-        (sender) =>
-          sender.track != null && localStream.getTracks().includes(sender.track)
-      );
-      if (alreadyAttached) continue;
-      localStream.getTracks().forEach((track) => {
-        pc.addTrack(track, localStream);
-      });
+      for (const track of localStream.getTracks()) {
+        const sender = pc
+          .getSenders()
+          .find((candidate) => candidate.track?.kind === track.kind);
+        if (sender) {
+          void sender.replaceTrack(track).catch(() => undefined);
+        } else {
+          pc.addTrack(track, localStream);
+        }
+      }
     }
   }, [localStream]);
 
