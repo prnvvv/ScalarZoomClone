@@ -5,11 +5,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import DateTime, create_engine, event
-from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.engine import Engine, URL, make_url
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.types import TypeDecorator
 
 DEFAULT_DATABASE_URL = "sqlite:///./data/zoom_clone.db"
+
+# Anchors relative SQLite paths so the database always lives inside
+# ``backend/data`` regardless of the directory the app is started from.
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _resolve_database_url() -> str:
@@ -27,15 +31,28 @@ def _resolve_database_url() -> str:
     return os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
 
 
-DATABASE_URL = _resolve_database_url()
-_url = make_url(DATABASE_URL)
+_url = make_url(_resolve_database_url())
 _is_sqlite = _url.get_backend_name() == "sqlite"
 
 
-def _ensure_sqlite_directory() -> None:
-    """Create the parent folder of a file-based SQLite database."""
-    if _is_sqlite and _url.database and _url.database != ":memory:":
-        Path(_url.database).expanduser().parent.mkdir(parents=True, exist_ok=True)
+def _resolve_sqlite_url(url: URL) -> URL:
+    """Anchor a file-based SQLite path to ``backend/`` and create its folder.
+
+    Absolute paths, other backends and in-memory URLs are returned unchanged.
+    """
+    if not _is_sqlite or not url.database or url.database == ":memory:":
+        return url
+
+    path = Path(url.database).expanduser()
+    if not path.is_absolute():
+        path = BACKEND_ROOT / path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # as_posix() keeps Windows drive paths valid inside a SQLite URL.
+    return url.set(database=path.as_posix())
+
+
+_resolved_url = _resolve_sqlite_url(_url)
+DATABASE_URL = str(_resolved_url)
 
 
 class Base(DeclarativeBase):
@@ -69,10 +86,8 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-_ensure_sqlite_directory()
-
 engine: Engine = create_engine(
-    DATABASE_URL,
+    _resolved_url,
     connect_args={"check_same_thread": False} if _is_sqlite else {},
 )
 
