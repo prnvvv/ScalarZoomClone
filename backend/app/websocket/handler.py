@@ -208,13 +208,12 @@ async def _handle_join(
         await _send_error(websocket, ErrorCode.UNAUTHORIZED_ACTION, "Meeting is not joinable")
         return
 
-    host_id = meeting_gateway.get_host_id(meeting)
     existing = await _resolve_participant(
         db,
-        meeting_id=session.meeting_id,
+        meeting=meeting,
+        meeting_pk=meeting.id,
         requested_id=message.participant_id,
         display_name=message.display_name,
-        host_id=host_id,
     )
     if existing is None:
         await _send_error(
@@ -239,7 +238,7 @@ async def _handle_join(
     others = await _participants_payload(
         db,
         manager,
-        session.meeting_id,
+        meeting.id,
         exclude=participant_id,
     )
 
@@ -271,38 +270,39 @@ async def _handle_join(
 async def _resolve_participant(
     db: Session,
     *,
-    meeting_id: str,
+    meeting: Any,
+    meeting_pk: int,
     requested_id: int | None,
     display_name: str,
-    host_id: int | None,
 ) -> tuple[int, bool] | None:
     """Bind a connection to a participant row, creating or reviving one as needed.
 
-    Host status always comes from the meeting's ``host_id``, never from the
-    client payload.
+    ``meeting_pk`` is the internal ``meetings.id``. Host status comes from the
+    meeting row, never from the client payload.
     """
     if requested_id is not None:
         participant = await run_in_threadpool(
             participant_service.get_participant, db, requested_id
         )
         if participant is not None:
-            if participant.meeting_id != meeting_id:
+            if participant.meeting_id != meeting_pk:
                 return None
             if participant.left_at is not None:
                 participant.left_at = None
-                participant.joined_at = datetime.now(timezone.utc)
+                participant.screen_share = False
                 await run_in_threadpool(db.commit)
-            is_host = host_id is not None and participant.user_id == host_id
-            participant.is_host = is_host
-            await run_in_threadpool(db.commit)
+            is_host = meeting_gateway.is_host_participant(meeting, participant)
+            if participant.is_host != is_host:
+                await run_in_threadpool(
+                    participant_service.set_participant_host, db, participant.id, is_host
+                )
             return participant.id, is_host
 
     created = await run_in_threadpool(
         participant_service.create_participant,
         db,
-        meeting_id=meeting_id,
+        meeting_id=meeting_pk,
         display_name=display_name,
-        user_id=None,
         is_host=False,
     )
     return created.id, False
@@ -392,7 +392,18 @@ async def _handle_meeting_state(
         )
         return
 
-    participants = await _participants_payload(db, manager, session.meeting_id)
+    meeting = await run_in_threadpool(
+        meeting_gateway.get_meeting, db, session.meeting_id
+    )
+    if meeting is None:
+        await _send_error(
+            websocket,
+            ErrorCode.MEETING_NOT_FOUND,
+            "Meeting does not exist",
+        )
+        return
+
+    participants = await _participants_payload(db, manager, meeting.id)
     connected = await manager.get_meeting_participants(session.meeting_id)
 
     await websocket.send_json(
@@ -457,6 +468,12 @@ async def _handle_screen_share(
         )
         return
 
+    await run_in_threadpool(
+        participant_service.update_participant_state,
+        db,
+        session.participant_id,
+        screen_share=message.active,
+    )
     await manager.set_screen_share(
         session.meeting_id,
         session.participant_id,
@@ -628,23 +645,30 @@ async def _cleanup(
 async def _participants_payload(
     db: Session,
     manager: ConnectionManager,
-    meeting_id: str,
+    meeting_pk: int,
     *,
     exclude: int | None = None,
 ) -> list[dict]:
     rows = await run_in_threadpool(
         participant_service.get_meeting_participants,
         db,
-        meeting_id,
+        meeting_pk,
         active_only=True,
     )
     payload = []
     for row in rows:
         if exclude is not None and row.id == exclude:
             continue
-        summary = row.to_summary()
-        summary["screen_share"] = manager.is_sharing_screen(meeting_id, row.id)
-        payload.append(summary)
+        payload.append(
+            {
+                "id": row.id,
+                "display_name": row.display_name,
+                "is_host": row.is_host,
+                "is_muted": row.is_muted,
+                "is_video_on": row.is_video_on,
+                "screen_share": bool(row.screen_share),
+            }
+        )
     return payload
 
 
