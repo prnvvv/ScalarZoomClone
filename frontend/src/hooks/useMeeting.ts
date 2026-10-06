@@ -28,6 +28,20 @@ interface UseMeetingOptions {
   displayName: string;
 }
 
+export interface MeetingDeviceSettings {
+  audioInputDevices: MediaDeviceInfo[];
+  videoInputDevices: MediaDeviceInfo[];
+  audioOutputDevices: MediaDeviceInfo[];
+  selectedAudioInputId: string | null;
+  selectedVideoInputId: string | null;
+  selectedAudioOutputId: string | null;
+  canSelectSpeaker: boolean;
+  refreshDevices: () => Promise<void>;
+  setAudioInput: (deviceId: string) => void;
+  setVideoInput: (deviceId: string) => void;
+  setAudioOutput: (deviceId: string) => void;
+}
+
 export interface MeetingSession {
   phase: MeetingPhase;
   /** Failure copy for `rejected` / `failed` phases. */
@@ -42,8 +56,14 @@ export interface MeetingSession {
   isMuted: boolean;
   isVideoOn: boolean;
   mediaError: string | null;
+  devices: MeetingDeviceSettings;
   toggleMute: () => void;
   toggleVideo: () => void;
+  /** Host-only; a no-op for anyone the server did not mark as host. */
+  muteParticipant: (targetId: number, muted: boolean) => void;
+  removeParticipant: (targetId: number) => void;
+  muteAll: () => void;
+  endMeeting: () => void;
   leave: () => void;
   retry: () => void;
   reconnect: () => void;
@@ -272,6 +292,57 @@ export function useMeeting({
     media.setVideoOn(!media.isVideoOn);
   }, [media]);
 
+  // Host actions. The server still validates `is_host`; guarding here only
+  // avoids emitting messages the server would reject.
+  const muteParticipant = useCallback(
+    (targetId: number, muted: boolean) => {
+      const me = selfIdRef.current;
+      if (!isHost || me === null || phase !== "joined") return;
+      if (targetId === me) return;
+      send({
+        type: "mute_participant",
+        participant_id: me,
+        target_id: targetId,
+        is_muted: muted,
+      });
+    },
+    [isHost, phase, send]
+  );
+
+  const removeParticipant = useCallback(
+    (targetId: number) => {
+      const me = selfIdRef.current;
+      if (!isHost || me === null || phase !== "joined") return;
+      if (targetId === me) return;
+      send({
+        type: "remove_participant",
+        participant_id: me,
+        target_id: targetId,
+      });
+    },
+    [isHost, phase, send]
+  );
+
+  const muteAll = useCallback(() => {
+    const me = selfIdRef.current;
+    if (!isHost || me === null || phase !== "joined") return;
+    for (const participant of participants) {
+      if (participant.id === me || participant.is_muted) continue;
+      send({
+        type: "mute_participant",
+        participant_id: me,
+        target_id: participant.id,
+        is_muted: true,
+      });
+    }
+  }, [isHost, participants, phase, send]);
+
+  const endMeeting = useCallback(() => {
+    const me = selfIdRef.current;
+    if (!isHost || me === null || phase !== "joined") return;
+    send({ type: "end_meeting", participant_id: me });
+  }, [isHost, phase, send]);
+
   const leave = useCallback(() => {
     if (selfId !== null && (phase === "joining" || phase === "joined")) {
       send({ type: "leave", participant_id: selfId });
@@ -305,8 +376,25 @@ export function useMeeting({
     isMuted: media.isMuted,
     isVideoOn: media.isVideoOn,
     mediaError: media.error,
+    devices: {
+      audioInputDevices: media.audioInputDevices,
+      videoInputDevices: media.videoInputDevices,
+      audioOutputDevices: media.audioOutputDevices,
+      selectedAudioInputId: media.selectedAudioInputId,
+      selectedVideoInputId: media.selectedVideoInputId,
+      selectedAudioOutputId: media.selectedAudioOutputId,
+      canSelectSpeaker: media.canSelectSpeaker,
+      refreshDevices: media.refreshDevices,
+      setAudioInput: media.setAudioInput,
+      setVideoInput: media.setVideoInput,
+      setAudioOutput: media.setAudioOutput,
+    },
     toggleMute,
     toggleVideo,
+    muteParticipant,
+    removeParticipant,
+    muteAll,
+    endMeeting,
     leave,
     retry,
     reconnect: ws.reconnect,
