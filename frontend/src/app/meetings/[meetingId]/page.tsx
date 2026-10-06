@@ -399,10 +399,12 @@ export default function MeetingRoomPage() {
         isVideoOn={session.isVideoOn}
         participantsOpen={panelOpen}
         settingsOpen={settingsOpen}
+        isScreenSharing={session.isScreenSharing}
         onToggleMute={session.toggleMute}
         onToggleVideo={session.toggleVideo}
         onToggleParticipants={toggleParticipants}
         onToggleSettings={openSettings}
+        onToggleScreenShare={session.toggleScreenShare}
         onLeave={leaveRoom}
       />
 
