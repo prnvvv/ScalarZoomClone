@@ -121,6 +121,17 @@ class ConnectionManager:
 
         return delivered
 
+    async def disconnect_and_close(
+        self,
+        meeting_id: str,
+        participant_id: int,
+    ) -> Connection | None:
+        """Remove a connection and close its socket (host removal, meeting end)."""
+        connection = await self.disconnect(meeting_id, participant_id)
+        if connection is not None:
+            await self._safe_close(connection.websocket)
+        return connection
+
     async def get_meeting_participants(self, meeting_id: str) -> list[int]:
         async with self._lock:
             meeting = self._meetings.get(meeting_id) or {}
