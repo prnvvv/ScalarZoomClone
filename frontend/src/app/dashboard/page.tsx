@@ -2,44 +2,15 @@
 
 import Link from "next/link";
 import { ActionTiles } from "@/components/dashboard/ActionTiles";
+import { RecentMeetingCard } from "@/components/dashboard/RecentMeetingCard";
+import { UpcomingMeetingCard } from "@/components/dashboard/UpcomingMeetingCard";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { SkeletonList } from "@/components/common/Skeleton";
 import { AppShell } from "@/components/layout/AppShell";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useDashboardData } from "@/hooks/useDashboardData";
-import {
-  cx,
-  formatDateShort,
-  formatTime,
-  greetingForDate,
-  statusLabel,
-  statusTone,
-  todayLabel,
-} from "@/lib/utils";
-import type { Meeting } from "@/types/meeting";
-
-function MeetingRow({ meeting }: { meeting: Meeting }) {
-  return (
-    <div className="meeting-row">
-      <div className="meeting-row__body">
-        <div className="meeting-row__title">{meeting.title}</div>
-        <div className="meeting-row__meta">
-          <span>
-            {formatDateShort(meeting.start_time)} at{" "}
-            {formatTime(meeting.start_time)}
-          </span>
-          {meeting.duration ? <span>{meeting.duration} min</span> : null}
-        </div>
-      </div>
-      <div className="meeting-row__side">
-        <span className={cx("badge", statusTone(meeting.status) && `badge--${statusTone(meeting.status)}`)}>
-          {statusLabel(meeting.status)}
-        </span>
-      </div>
-    </div>
-  );
-}
+import { greetingForDate, todayLabel } from "@/lib/utils";
 
 export default function DashboardPage() {
   const { user } = useCurrentUser();
@@ -87,7 +58,10 @@ export default function DashboardPage() {
               />
             ) : (
               upcoming.items.map((meeting) => (
-                <MeetingRow key={meeting.meeting_id} meeting={meeting} />
+                <UpcomingMeetingCard
+                  key={meeting.meeting_id}
+                  meeting={meeting}
+                />
               ))
             )}
           </div>
@@ -112,7 +86,10 @@ export default function DashboardPage() {
               />
             ) : (
               recent.items.map((meeting) => (
-                <MeetingRow key={meeting.meeting_id} meeting={meeting} />
+                <RecentMeetingCard
+                  key={meeting.meeting_id}
+                  meeting={meeting}
+                />
               ))
             )}
           </div>
