@@ -25,6 +25,25 @@ interface PeerEntry {
   pendingCandidates: RTCIceCandidateInit[];
 }
 
+/**
+ * Senders carrying `kind`, looked up through the transceiver as well: after
+ * `replaceTrack(null)` (camera unavailable) `sender.track` is null but the
+ * transceiver still knows its media kind, so screen share can find and reuse
+ * the same video sender instead of silently going nowhere.
+ */
+function sendersOfKind(pc: RTCPeerConnection, kind: string): RTCRtpSender[] {
+  return pc
+    .getSenders()
+    .filter((sender) => {
+      if (sender.track?.kind === kind) return true;
+      // `transceiver` is standard in browsers but missing from the DOM types.
+      const withTransceiver = sender as RTCRtpSender & {
+        transceiver?: RTCRtpTransceiver;
+      };
+      return withTransceiver.transceiver?.receiver.track.kind === kind;
+    });
+}
+
 export interface WebRtcState {
   remoteStreams: Record<number, MediaStream>;
   /** Create peers for the connected set; offers when we are the lower id. */
@@ -99,8 +118,7 @@ export function useWebRTC({
 
   const replaceVideoTrack = useCallback((newTrack: MediaStreamTrack | null) => {
     for (const { pc } of peersRef.current.values()) {
-      const sender = pc.getSenders().find((s) => s.track?.kind === "video");
-      if (sender) {
+      for (const sender of sendersOfKind(pc, "video")) {
         void sender.replaceTrack(newTrack).catch(() => undefined);
       }
     }
@@ -115,10 +133,28 @@ export function useWebRTC({
       const entry: PeerEntry = { pc, pendingCandidates: [] };
       peersRef.current.set(peerId, entry);
 
+      // A peer created while a share is live must receive the screen, not
+      // the camera. Audio and video senders are always reserved (via a
+      // transceiver when no track exists yet) so `replaceTrack` has
+      // somewhere to go even when the camera or microphone was never
+      // granted — otherwise a screen share with no camera transmits nothing.
+      const shareStream = screenStreamRef.current;
+      const sharedVideo = shareStream?.getVideoTracks()[0] ?? null;
       if (localStream) {
-        localStream.getTracks().forEach((track) => {
+        for (const track of localStream.getAudioTracks()) {
           pc.addTrack(track, localStream);
-        });
+        }
+      }
+      const outgoingVideo = sharedVideo ?? localStream?.getVideoTracks()[0] ?? null;
+      if (outgoingVideo) {
+        const owner = sharedVideo === outgoingVideo ? shareStream : localStream;
+        if (owner) pc.addTrack(outgoingVideo, owner);
+      }
+      if (sendersOfKind(pc, "video").length === 0) {
+        pc.addTransceiver("video", { direction: "sendrecv" });
+      }
+      if (sendersOfKind(pc, "audio").length === 0) {
+        pc.addTransceiver("audio", { direction: "sendrecv" });
       }
 
       pc.onicecandidate = (event) => {
@@ -255,9 +291,7 @@ export function useWebRTC({
     cameraTrackRef.current = cameraTrack;
     for (const { pc } of peersRef.current.values()) {
       for (const track of localStream.getTracks()) {
-        const sender = pc
-          .getSenders()
-          .find((candidate) => candidate.track?.kind === track.kind);
+        const [sender] = sendersOfKind(pc, track.kind);
         if (sender) {
           void sender.replaceTrack(track).catch(() => undefined);
         } else {
