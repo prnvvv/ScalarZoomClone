@@ -58,6 +58,23 @@ def create_participant(
     return participant
 
 
+def has_host_participant(db: Session, meeting_id: int | str) -> bool:
+    """True when this meeting already has a row flagged as host.
+
+    Used by the realtime join handler to decide who hosts a room. The app has
+    no authentication, so the server cannot map a live socket back to
+    ``users.id``; the first participant to join is therefore the host, and the
+    flag is persisted so later reconnects keep it. The client never chooses.
+    """
+    pk = _resolve_meeting_pk(db, meeting_id)
+    stmt = (
+        select(Participant.id)
+        .where(Participant.meeting_id == pk, Participant.is_host.is_(True))
+        .limit(1)
+    )
+    return db.execute(stmt).first() is not None
+
+
 def get_participant(db: Session, participant_id: int) -> Participant | None:
     return db.get(Participant, participant_id)
 
