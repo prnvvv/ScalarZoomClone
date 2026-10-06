@@ -94,6 +94,14 @@ class EndMeetingMessage(ClientEvent):
     participant_id: int = Field(ge=1)
 
 
+class ReactionMessage(ClientEvent):
+    """Transient emoji reaction; never persisted to participant state."""
+
+    type: Literal["reaction"]
+    participant_id: int = Field(ge=1)
+    emoji: str = Field(min_length=1, max_length=16)
+
+
 class PingMessage(ClientEvent):
     type: Literal["ping"]
 
@@ -110,6 +118,7 @@ AnyClientMessage = Union[
     MuteParticipantMessage,
     RemoveParticipantMessage,
     EndMeetingMessage,
+    ReactionMessage,
     PingMessage,
 ]
 
@@ -125,6 +134,7 @@ CLIENT_MESSAGE_TYPES = (
     MuteParticipantMessage,
     RemoveParticipantMessage,
     EndMeetingMessage,
+    ReactionMessage,
     PingMessage,
 )
 
