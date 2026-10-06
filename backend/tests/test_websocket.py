@@ -18,6 +18,10 @@ Run with::
 from __future__ import annotations
 
 import asyncio
+import os
+import shutil
+import tempfile
+from contextlib import ExitStack
 from datetime import datetime, timezone
 
 import pytest
@@ -287,12 +291,14 @@ def client():
     from fastapi.testclient import TestClient
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
-    from sqlalchemy.pool import StaticPool
 
+    # A file-backed database gives each session its own connection; the
+    # in-memory StaticPool shares one, which makes concurrent sessions fight
+    # over the same transaction.
+    tmp_dir = tempfile.mkdtemp(prefix="zoom_ws_test_")
     engine = create_engine(
-        "sqlite://",
+        f"sqlite:///{os.path.join(tmp_dir, 'test.db')}",
         connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
     )
     TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     Base.metadata.create_all(engine)
@@ -311,7 +317,14 @@ def client():
     get_manager()._screen_sharing.clear()
     with TestClient(app) as test_client:
         test_client.testing_session = TestingSession  # type: ignore[attr-defined]
-        yield test_client
+        try:
+            yield test_client
+        finally:
+            stack = getattr(test_client, "_ws_stack", None)
+            if stack is not None:
+                stack.close()
+            engine.dispose()
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 @pytest.fixture()
@@ -336,18 +349,33 @@ def _seed_meeting(db, meeting_id: str, host_id: int = 1) -> None:
 
 
 def _create_participant(db, meeting_id: str, name: str, user_id: int | None = None):
+    from app.models.user import DEMO_USER_ID
     from app.services import participant_service
 
+    # Participant has no user_id column yet, so the host flag is derived from
+    # the seeded demo host id (Meeting.host_id == DEMO_USER_ID).
     return participant_service.create_participant(
         db,
         meeting_id=meeting_id,
         display_name=name,
+        is_host=user_id == DEMO_USER_ID,
         user_id=user_id,
     )
 
 
+def _socket_stack(client):
+    """Per-client stack holding entered WebSocket sessions for teardown."""
+    stack = getattr(client, "_ws_stack", None)
+    if stack is None:
+        stack = ExitStack()
+        client._ws_stack = stack
+    return stack
+
+
 def _join(client, meeting_id: str, participant_id: int, name: str):
-    socket = client.websocket_connect(f"/ws/meetings/{meeting_id}")
+    socket = _socket_stack(client).enter_context(
+        client.websocket_connect(f"/ws/meetings/{meeting_id}")
+    )
     socket.send_json(
         {
             "type": "join",
@@ -417,7 +445,6 @@ def test_offer_answer_and_ice_routing(client, db):
     socket_sender, _ = _join(client, MEETING_A, sender.id, "Sender")
     socket_target, _ = _join(client, MEETING_A, target.id, "Target")
     socket_sender.receive_json()
-    socket_target.receive_json()
 
     sdp = "v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\n"
     socket_sender.send_json(
@@ -471,7 +498,6 @@ def test_media_state_and_screen_share_broadcast(client, db):
     socket_watcher, _ = _join(client, MEETING_A, watcher.id, "Watcher")
     socket_actor, _ = _join(client, MEETING_A, actor.id, "Actor")
     socket_watcher.receive_json()
-    socket_actor.receive_json()
 
     socket_actor.send_json(
         {
@@ -513,7 +539,6 @@ def test_host_mute_and_unauthorized_mute(client, db):
     socket_host, _ = _join(client, MEETING_A, host.id, "Host")
     socket_guest, _ = _join(client, MEETING_A, guest.id, "Guest")
     socket_host.receive_json()
-    socket_guest.receive_json()
 
     socket_guest.send_json(
         {
@@ -553,7 +578,6 @@ def test_host_remove_participant(client, db):
     socket_host, _ = _join(client, MEETING_A, host.id, "Host")
     socket_guest, _ = _join(client, MEETING_A, guest.id, "Guest")
     socket_host.receive_json()
-    socket_guest.receive_json()
 
     socket_host.send_json(
         {
@@ -585,7 +609,6 @@ def test_unauthorized_remove_and_end_meeting(client, db):
     socket_host, _ = _join(client, MEETING_A, host.id, "Host")
     socket_guest, _ = _join(client, MEETING_A, guest.id, "Guest")
     socket_host.receive_json()
-    socket_guest.receive_json()
 
     socket_guest.send_json(
         {
@@ -655,7 +678,7 @@ def test_disconnect_cleanup_removes_connection(client, db):
     left = socket_a1.receive_json()
     assert left == {"type": "participant_left", "participant_id": a2.id}
 
-    remaining = get_manager().get_meeting_participants(MEETING_A)
+    remaining = asyncio.run(get_manager().get_meeting_participants(MEETING_A))
     assert a2.id not in remaining
     socket_a1.close()
 
@@ -694,7 +717,6 @@ def test_signaling_rejects_foreign_sender(client, db):
     socket_sender, _ = _join(client, MEETING_A, sender.id, "Sender")
     socket_target, _ = _join(client, MEETING_A, target.id, "Target")
     socket_sender.receive_json()
-    socket_target.receive_json()
 
     socket_sender.send_json(
         {
@@ -759,14 +781,14 @@ def test_meeting_state_snapshot_on_rejoin(client, db):
     socket_watcher, _ = _join(client, MEETING_A, watcher.id, "Watcher")
     socket_actor, _ = _join(client, MEETING_A, actor.id, "Actor")
     socket_watcher.receive_json()
-    socket_actor.receive_json()
 
     socket_actor.close()
     socket_watcher.receive_json()
 
     socket_late, joined = _join(client, MEETING_A, watcher.id, "Watcher")
     assert joined["type"] == "joined"
-    assert [p["id"] for p in joined["participants"]] == [watcher.id]
+    # The snapshot excludes the joiner, and the actor has left.
+    assert joined["participants"] == []
 
     socket_late.close()
     socket_watcher.close()

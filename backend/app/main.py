@@ -4,8 +4,10 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
+from app.database.database import init_db
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +30,11 @@ def create_app() -> FastAPI:
 
     @application.on_event("startup")
     async def on_startup() -> None:
+        # Create the SQLite schema and the demo user before the first request.
+        # Without this a fresh database answers every database route with
+        # "no such table" instead of starting from an empty schema. Failures
+        # propagate so a broken database is not served silently.
+        await run_in_threadpool(init_db)
         logger.info(
             "Realtime server ready (stun=%s, origins=%s)",
             settings.stun_server,
