@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, String, false, true
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Integer, String, false, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.database import Base, UTCDateTime
@@ -25,7 +25,12 @@ class Participant(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    # Internal meetings.id, NOT the public meeting_id string.
+    user_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     meeting_id: Mapped[int] = mapped_column(
         ForeignKey("meetings.id", ondelete="CASCADE"), index=True
     )
