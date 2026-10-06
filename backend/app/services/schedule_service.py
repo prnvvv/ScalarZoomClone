@@ -47,7 +47,7 @@ def create_scheduled_meeting(
         title=title,
         description=description,
         start_time=start_time,
-        end_time=calculate_end_time(start_time, duration or 0),
+        end_time=calculate_end_time(start_time, duration) if duration else None,
         duration=duration,
         status=MeetingStatus.SCHEDULED,
         meeting_link=build_meeting_link(meeting_id),
