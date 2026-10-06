@@ -9,6 +9,7 @@ import { ControlBar } from "@/components/meeting/ControlBar";
 import { ParticipantsPanel } from "@/components/meeting/ParticipantsPanel";
 import { VideoTile } from "@/components/meeting/VideoTile";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useMeeting } from "@/hooks/useMeeting";
 import { useMeetingRoom } from "@/hooks/useMeetingRoom";
 import { STORAGE_KEYS } from "@/lib/constants";
 import {
@@ -18,6 +19,7 @@ import {
   formatDateShort,
   formatTime,
 } from "@/lib/utils";
+import type { ParticipantSummary } from "@/types/participant";
 
 /** sessionStorage is not observable; re-read on any re-render instead. */
 const subscribeToSessionName = () => () => {};
@@ -28,6 +30,19 @@ function gridCountClass(count: number): string {
   if (count === 3) return "room__grid--count-3";
   if (count === 4) return "room__grid--count-4";
   return "room__grid--count-5plus";
+}
+
+function connectionLabel(status: string): string {
+  switch (status) {
+    case "connected":
+      return "Connected";
+    case "reconnecting":
+      return "Reconnecting…";
+    case "disconnected":
+      return "Disconnected";
+    default:
+      return "Connecting…";
+  }
 }
 
 function RoomScreen({
@@ -62,8 +77,6 @@ export default function MeetingRoomPage() {
   const { meeting, participants, loading, error, notFound, refresh } =
     useMeetingRoom(meetingId);
 
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOn, setIsVideoOn] = useState(true);
   const [panelOpen, setPanelOpen] = useState(false);
 
   const storedName = useSyncExternalStore(
@@ -72,6 +85,8 @@ export default function MeetingRoomPage() {
     () => ""
   );
   const localName = storedName || user?.name || "You";
+
+  const session = useMeeting({ meeting, meetingId, displayName: localName });
 
   const copyInvite = async () => {
     const ok = await copyText(buildInviteUrl(meetingId));
@@ -82,6 +97,7 @@ export default function MeetingRoomPage() {
   };
 
   const leaveRoom = () => {
+    session.leave();
     router.push("/dashboard");
   };
 
@@ -141,10 +157,92 @@ export default function MeetingRoomPage() {
     return null;
   }
 
+  if (session.phase === "left") {
+    return null;
+  }
+
+  if (session.phase === "ended") {
+    return (
+      <RoomScreen
+        title="This meeting has ended"
+        body="The meeting is no longer running."
+      >
+        <Link href="/dashboard" className="btn btn--primary">
+          Back to dashboard
+        </Link>
+      </RoomScreen>
+    );
+  }
+
+  if (session.phase === "removed") {
+    return (
+      <RoomScreen
+        title="You were removed"
+        body="The host removed you from this meeting."
+      >
+        <Link href="/dashboard" className="btn btn--primary">
+          Back to dashboard
+        </Link>
+      </RoomScreen>
+    );
+  }
+
+  if (session.phase === "rejected" || session.phase === "failed") {
+    return (
+      <RoomScreen
+        title="Could not join the meeting"
+        body={
+          session.failure ?? "Something went wrong while joining the meeting."
+        }
+      >
+        <button
+          type="button"
+          className="btn btn--primary"
+          onClick={session.retry}
+        >
+          Try again
+        </button>
+        <Link href="/dashboard" className="btn btn--ghost">
+          Back to dashboard
+        </Link>
+      </RoomScreen>
+    );
+  }
+
+  if (
+    session.phase === "joining" &&
+    session.connection === "disconnected"
+  ) {
+    return (
+      <RoomScreen
+        title="Could not connect"
+        body="The meeting service is unreachable. Check your connection and try again."
+      >
+        <button
+          type="button"
+          className="btn btn--primary"
+          onClick={session.retry}
+        >
+          Try again
+        </button>
+        <Link href="/dashboard" className="btn btn--ghost">
+          Back to dashboard
+        </Link>
+      </RoomScreen>
+    );
+  }
+
   const isLocalHost = user?.id === meeting.host_id;
-  const others = participants.filter((p) => p.display_name !== localName);
+  const roster: ParticipantSummary[] =
+    session.phase === "joined" ? session.participants : participants;
+  const others = roster.filter((participant) => {
+    if (session.selfId !== null) return participant.id !== session.selfId;
+    return participant.display_name !== localName;
+  });
   const tileCount = 1 + others.length;
   const scheduledNotice = meeting.status === "scheduled";
+  const connectionLost =
+    session.phase === "joined" && session.connection === "disconnected";
 
   return (
     <div className="room">
@@ -156,6 +254,17 @@ export default function MeetingRoomPage() {
             <span>
               {formatDateShort(meeting.start_time)} ·{" "}
               {formatTime(meeting.start_time)}
+            </span>
+            <span
+              className={cx(
+                "room__connection",
+                session.connection === "reconnecting" &&
+                  "room__connection--reconnecting",
+                session.connection === "disconnected" &&
+                  "room__connection--failed"
+              )}
+            >
+              {connectionLabel(session.connection)}
             </span>
           </div>
         </div>
@@ -183,12 +292,36 @@ export default function MeetingRoomPage() {
         </div>
       ) : null}
 
+      {connectionLost ? (
+        <div className="room-notice room-notice--error">
+          <AlertIcon size={16} />
+          Connection lost.
+          <button
+            type="button"
+            className="room__chip room-notice__action"
+            onClick={session.reconnect}
+          >
+            Reconnect
+          </button>
+        </div>
+      ) : null}
+
+      {session.mediaError ? (
+        <div className="room-notice">
+          <AlertIcon size={16} />
+          {session.mediaError}
+        </div>
+      ) : null}
+
       <main className="room__stage">
         <div className={cx("room__grid", gridCountClass(tileCount))}>
           <VideoTile
             name={`${localName} (You)`}
-            isMuted={isMuted}
+            isMuted={session.isMuted}
             isHost={isLocalHost}
+            stream={session.localStream}
+            isVideoOn={session.isVideoOn}
+            videoMuted
           />
 
           {others.map((participant) => (
@@ -197,6 +330,8 @@ export default function MeetingRoomPage() {
               name={participant.display_name}
               isMuted={participant.is_muted}
               isHost={participant.is_host}
+              stream={session.remoteStreams[participant.id]}
+              isVideoOn={participant.is_video_on}
             />
           ))}
 
@@ -214,11 +349,11 @@ export default function MeetingRoomPage() {
       </main>
 
       <ControlBar
-        isMuted={isMuted}
-        isVideoOn={isVideoOn}
+        isMuted={session.isMuted}
+        isVideoOn={session.isVideoOn}
         participantsOpen={panelOpen}
-        onToggleMute={() => setIsMuted((m) => !m)}
-        onToggleVideo={() => setIsVideoOn((v) => !v)}
+        onToggleMute={session.toggleMute}
+        onToggleVideo={session.toggleVideo}
         onToggleParticipants={() => setPanelOpen((o) => !o)}
         onLeave={leaveRoom}
       />
@@ -231,7 +366,7 @@ export default function MeetingRoomPage() {
             aria-hidden="true"
           />
           <ParticipantsPanel
-            participants={participants}
+            participants={roster}
             meetingId={meetingId}
             localName={localName}
             onClose={() => setPanelOpen(false)}
