@@ -18,6 +18,7 @@ Run with::
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 
 import pytest
 
@@ -254,7 +255,7 @@ def _bd1_modules_present() -> bool:
     import importlib.util
 
     required = (
-        "app.database.base",
+        "app.database.database",
         "app.database.session",
         "app.models.meeting",
         "app.services.meeting_service",
@@ -277,11 +278,16 @@ requires_bd1 = pytest.mark.skipif(
 @pytest.fixture()
 def client():
     pytest.importorskip(
-        "app.database.base",
+        "app.database.database",
         reason="Backend Developer 1 database modules not implemented yet",
     )
-    from app.database.base import Base
+    from app.database.database import Base
+    from app.database.session import get_db
     from app.main import create_app
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
 
     engine = create_engine(
         "sqlite://",
@@ -314,9 +320,18 @@ def db(client):
 
 
 def _seed_meeting(db, meeting_id: str, host_id: int = 1) -> None:
-    from app.models.meeting import Meeting
+    from app.models.meeting import Meeting, MeetingStatus
 
-    db.add(Meeting(id=meeting_id, host_id=host_id))
+    db.add(
+        Meeting(
+            meeting_id=meeting_id,
+            host_id=host_id,
+            title="Test Meeting",
+            start_time=datetime.now(timezone.utc),
+            status=MeetingStatus.ACTIVE,
+            meeting_link=f"https://meet.example.com/{meeting_id}",
+        )
+    )
     db.commit()
 
 
