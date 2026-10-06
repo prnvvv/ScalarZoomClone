@@ -1,4 +1,3 @@
-import { ClerkProvider } from '@clerk/nextjs';
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "@/styles/primitives.css";
@@ -26,12 +25,10 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <ClerkProvider>
-      <html lang="en">
-        <body>
-          <ToastProvider>{children}</ToastProvider>
-        </body>
-      </html>
-    </ClerkProvider>
+    <html lang="en">
+      <body>
+        <ToastProvider>{children}</ToastProvider>
+      </body>
+    </html>
   );
 }
