@@ -1,10 +1,9 @@
-"use client";
-
 import {
   MicIcon,
   MicOffIcon,
   PhoneOffIcon,
   ScreenShareIcon,
+  ScreenShareOffIcon,
   SettingsIcon,
   UsersIcon,
   VideoIcon,
@@ -23,6 +22,9 @@ interface ControlBarProps {
   /** Room settings popover (camera / microphone / speaker choice). */
   settingsOpen?: boolean;
   onToggleSettings?: () => void;
+  /** Screen sharing state and control. */
+  isScreenSharing?: boolean;
+  onToggleScreenShare?: () => void;
 }
 
 /** Bottom control strip of the meeting room. */
@@ -36,6 +38,8 @@ export function ControlBar({
   onLeave,
   settingsOpen = false,
   onToggleSettings,
+  isScreenSharing = false,
+  onToggleScreenShare,
 }: ControlBarProps) {
   return (
     <div className="room__controls" role="toolbar" aria-label="Meeting controls">
@@ -69,18 +73,35 @@ export function ControlBar({
         </span>
       </button>
 
-      <button
-        type="button"
-        className="control"
-        disabled
-        title="Screen sharing is wired up with the realtime layer"
-        aria-label="Share screen (not connected yet)"
-      >
-        <span className="control__button">
-          <ScreenShareIcon size={20} />
-        </span>
-        <span className="control__label">Share</span>
-      </button>
+      {onToggleScreenShare ? (
+        <button
+          type="button"
+          className={cx("control", isScreenSharing && "control--active")}
+          aria-pressed={isScreenSharing}
+          aria-label={isScreenSharing ? "Stop sharing screen" : "Share screen"}
+          onClick={onToggleScreenShare}
+        >
+          <span className="control__button">
+            {isScreenSharing ? <ScreenShareOffIcon size={20} /> : <ScreenShareIcon size={20} />}
+          </span>
+          <span className="control__label">
+            {isScreenSharing ? "Stop share" : "Share"}
+          </span>
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="control"
+          disabled
+          title="Screen sharing is not available"
+          aria-label="Share screen (not available)"
+        >
+          <span className="control__button">
+            <ScreenShareIcon size={20} />
+          </span>
+          <span className="control__label">Share</span>
+        </button>
+      )}
 
       <button
         type="button"
