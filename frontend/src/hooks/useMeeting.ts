@@ -6,7 +6,7 @@ import { STORAGE_KEYS } from "@/lib/constants";
 import { clampDisplayName } from "@/lib/validators";
 import { joinMeeting } from "@/services/meetingService";
 import { useMediaDevices } from "@/hooks/useMediaDevices";
-import { useWebRTC } from "@/hooks/useWebRTC";
+import { useWebRTC, type ScreenShareResult } from "@/hooks/useWebRTC";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import type { Meeting } from "@/types/meeting";
 import type { ParticipantSummary } from "@/types/participant";
@@ -56,6 +56,8 @@ export interface MeetingSession {
   remoteStreams: Record<number, MediaStream>;
   isMuted: boolean;
   isVideoOn: boolean;
+  /** True once the user explicitly joined audio (microphone live). */
+  audioJoined: boolean;
   /** False when the microphone could not be acquired (missing or blocked). */
   audioAvailable: boolean;
   /** False when the camera could not be acquired (missing or blocked). */
@@ -70,7 +72,8 @@ export interface MeetingSession {
   devices: MeetingDeviceSettings;
   toggleMute: () => void;
   toggleVideo: () => void;
-  toggleScreenShare: () => void;
+  /** Returns how the share attempt ended so the UI can explain failures. */
+  toggleScreenShare: () => Promise<ScreenShareResult>;
   /** Broadcast a transient emoji; it is never stored as participant state. */
   sendReaction: (emoji: string) => void;
   /** Host-only; a no-op for anyone the server did not mark as host. */
@@ -125,7 +128,12 @@ export function useMeeting({
 
   // `media` is a fresh object every render; these callbacks are stable, so
   // depend on them instead of on the wrapper.
-  const { stop: stopMedia, setMuted: setMediaMuted, acquire: acquireMedia } = media;
+  const {
+    stop: stopMedia,
+    setMuted: setMediaMuted,
+    acquire: acquireMedia,
+    joinAudio,
+  } = media;
 
   const sendRef = useRef<(message: ClientMessage) => void>(() => undefined);
   const send = useCallback((message: ClientMessage) => {
@@ -389,11 +397,18 @@ export function useMeeting({
   }, [phase, ws.status, selfId, media.isMuted, media.isVideoOn, send]);
 
   const toggleMute = useCallback(() => {
+    // Zoom-like Join Audio: the first click on the audio control requests
+    // microphone permission; only afterwards does it mute/unmute.
+    if (!media.audioJoined) {
+      void joinAudio();
+      return;
+    }
     media.setMuted(!media.isMuted);
-  }, [media]);
+  }, [media, joinAudio]);
 
   const toggleVideo = useCallback(() => {
-    media.setVideoOn(!media.isVideoOn);
+    // Camera starts off; the first click requests permission (Start Video).
+    void media.setVideoOn(!media.isVideoOn);
   }, [media]);
 
   // Host actions. The server still validates `is_host`; guarding here only
@@ -447,22 +462,22 @@ export function useMeeting({
     send({ type: "end_meeting", participant_id: me });
   }, [isHost, phase, send]);
 
-  const toggleScreenShare = useCallback(() => {
+  const toggleScreenShare = useCallback(async (): Promise<ScreenShareResult> => {
     const me = selfIdRef.current;
-    if (me === null) return;
+    if (me === null) return "cancelled";
     if (!isScreenSharing) {
-      // The browser picker may be cancelled — only commit state and notify
-      // the room once a real display track exists.
-      void rtcRef.current.startScreenShare().then((started) => {
-        if (!started) return;
-        setIsScreenSharing(true);
-        send({ type: "screen_share", participant_id: me, active: true });
-      });
-    } else {
-      rtcRef.current.stopScreenShare();
-      setIsScreenSharing(false);
-      send({ type: "screen_share", participant_id: me, active: false });
+      // The browser picker may be cancelled or denied — only commit state
+      // and notify the room once a real display track exists.
+      const result = await rtcRef.current.startScreenShare();
+      if (result !== "started") return result;
+      setIsScreenSharing(true);
+      send({ type: "screen_share", participant_id: me, active: true });
+      return result;
     }
+    rtcRef.current.stopScreenShare();
+    setIsScreenSharing(false);
+    send({ type: "screen_share", participant_id: me, active: false });
+    return "stopped";
   }, [isScreenSharing, send]);
 
   const sendReaction = useCallback(
@@ -510,6 +525,7 @@ export function useMeeting({
     remoteStreams: rtc.remoteStreams,
     isMuted: media.isMuted,
     isVideoOn: media.isVideoOn,
+    audioJoined: media.audioJoined,
     audioAvailable: media.audioAvailable ?? true,
     videoAvailable: media.videoAvailable ?? true,
     isScreenSharing,
