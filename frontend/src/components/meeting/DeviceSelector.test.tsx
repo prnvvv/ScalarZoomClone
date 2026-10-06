@@ -81,7 +81,7 @@ describe("DeviceSelector", () => {
     renderSelector({
       videoInputDevices: [makeDevice("cam-1", "videoinput", "")],
     });
-    expect(screen.getByLabelText("Camera").options[0].textContent).toBe(
+    expect(screen.getByLabelText<HTMLSelectElement>("Camera").options[0].textContent).toBe(
       "Camera 1"
     );
   });
@@ -106,9 +106,9 @@ describe("DeviceSelector", () => {
 
   it("explains an empty device list instead of showing a blank select", () => {
     renderSelector();
-    expect(screen.getByLabelText("Camera").options[0].textContent).toBe(
-      "No camera detected"
-    );
+    expect(
+      screen.getByLabelText<HTMLSelectElement>("Camera").options[0].textContent
+    ).toBe("No camera detected");
     expect(screen.getByLabelText<HTMLSelectElement>("Microphone").disabled).toBe(
       true
     );
