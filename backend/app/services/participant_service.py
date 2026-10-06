@@ -1,3 +1,10 @@
+"""Persisted participant state: creation, media flags and departure.
+
+``meeting_id`` accepts either the internal ``meetings.id`` primary key (used
+by the realtime handler) or the public nine-digit meeting id string (used by
+the REST router). Live sockets and WebRTC state never reach this module.
+"""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -6,27 +13,38 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.participant import Participant
+from app.services.meeting_service import require_meeting
 
 
 class ParticipantNotFoundError(Exception):
     """Raised when a participant row does not exist."""
 
 
+def _resolve_meeting_pk(db: Session, meeting_id: int | str) -> int:
+    """Accept the internal ``meetings.id`` or the public meeting id string."""
+    if isinstance(meeting_id, int):
+        return meeting_id
+    return require_meeting(db, str(meeting_id)).id
+
+
 def create_participant(
     db: Session,
     *,
-    meeting_id: int,
+    meeting_id: int | str,
     display_name: str,
     is_host: bool = False,
+    user_id: int | None = None,
 ) -> Participant:
     """Create a participant row.
 
-    ``meeting_id`` is the internal ``meetings.id`` primary key, not the public
-    meeting id string. Resolve it with
-    ``app.websocket.meeting_gateway.get_meeting`` first.
+    ``meeting_id`` accepts the internal ``meetings.id`` primary key (via
+    ``app.websocket.handler``) or the public meeting id string (via the REST
+    router). ``user_id`` is part of the REST contract but is not persisted
+    yet: ``Participant`` has no user column, so it is accepted and ignored
+    until that column lands.
     """
     participant = Participant(
-        meeting_id=meeting_id,
+        meeting_id=_resolve_meeting_pk(db, meeting_id),
         display_name=display_name,
         is_host=is_host,
         is_muted=False,
@@ -52,11 +70,13 @@ def require_participant(db: Session, participant_id: int) -> Participant:
 
 def get_meeting_participants(
     db: Session,
-    meeting_id: int,
+    meeting_id: int | str,
     *,
     active_only: bool = False,
 ) -> list[Participant]:
-    stmt = select(Participant).where(Participant.meeting_id == meeting_id)
+    stmt = select(Participant).where(
+        Participant.meeting_id == _resolve_meeting_pk(db, meeting_id)
+    )
     if active_only:
         stmt = stmt.where(Participant.left_at.is_(None))
     stmt = stmt.order_by(Participant.id.asc())
