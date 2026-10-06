@@ -94,6 +94,25 @@ def get_host_id(meeting: Any) -> int | None:
     return int(host_id) if host_id is not None else None
 
 
+def is_host_participant(meeting: Any, participant: Any) -> bool:
+    """Decide whether a participant row belongs to the meeting host.
+
+    INTEGRATION GAP: ``Participant`` has no ``user_id`` column and the app has
+    no authentication, so a live socket cannot be mapped back to a user. Until
+    BD1 adds a user link (or auth lands), this falls back to the participant's
+    own ``is_host`` flag, which is only ever set server-side by
+    :func:`app.services.participant_service.set_participant_host`.
+
+    Once a ``user_id`` exists on Participant, compare it against
+    ``meeting.host_id`` here and drop the fallback.
+    """
+    host_id = get_host_id(meeting)
+    user_id = getattr(participant, "user_id", None)
+    if host_id is not None and user_id is not None:
+        return int(user_id) == host_id
+    return bool(getattr(participant, "is_host", False))
+
+
 def end_meeting(db: Session, meeting_id: str) -> Any | None:
     """Terminate a meeting through BD1's meeting service."""
     meeting = get_meeting(db, meeting_id)
