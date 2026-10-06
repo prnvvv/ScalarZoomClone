@@ -29,6 +29,7 @@ from app.schemas.websocket import (
     JoinMessage,
     LeaveMessage,
     MediaStateMessage,
+    MeetingStateMessage,
     MuteParticipantMessage,
     OfferMessage,
     PingMessage,
@@ -97,6 +98,7 @@ def test_parse_client_message_accepts_every_contract_type():
         ({"type": "mute_participant", "participant_id": 1, "target_id": 2}, MuteParticipantMessage),
         ({"type": "remove_participant", "participant_id": 1, "target_id": 2}, RemoveParticipantMessage),
         ({"type": "end_meeting", "participant_id": 1}, EndMeetingMessage),
+        ({"type": "meeting_state", "participant_id": 1}, MeetingStateMessage),
         ({"type": "ping"}, PingMessage),
     ]
     for payload, model in cases:
