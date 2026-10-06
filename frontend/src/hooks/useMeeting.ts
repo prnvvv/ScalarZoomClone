@@ -56,10 +56,13 @@ export interface MeetingSession {
   remoteStreams: Record<number, MediaStream>;
   isMuted: boolean;
   isVideoOn: boolean;
+  /** Whether the local user is currently sharing their screen. */
+  isScreenSharing: boolean;
   mediaError: string | null;
   devices: MeetingDeviceSettings;
   toggleMute: () => void;
   toggleVideo: () => void;
+  toggleScreenShare: () => void;
   /** Host-only; a no-op for anyone the server did not mark as host. */
   muteParticipant: (targetId: number, muted: boolean) => void;
   removeParticipant: (targetId: number) => void;
@@ -115,6 +118,13 @@ export function useMeeting({
     send,
   });
   const rtcRef = useRef(rtc);
+  useEffect(() => {
+    rtcRef.current = rtc;
+  }, [rtc]);
+
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+
+  // Keep rtcRef in sync so event handlers see the latest screen share functions.
   useEffect(() => {
     rtcRef.current = rtc;
   }, [rtc]);
@@ -373,6 +383,28 @@ export function useMeeting({
     send({ type: "end_meeting", participant_id: me });
   }, [isHost, phase, send]);
 
+  const toggleScreenShare = useCallback(() => {
+    const me = selfIdRef.current;
+    if (me === null) return;
+    if (!isScreenSharing) {
+      rtcRef.current.startScreenShare();
+      setIsScreenSharing(true);
+      send({
+        type: "screen_share",
+        participant_id: me,
+        active: true,
+      });
+    } else {
+      rtcRef.current.stopScreenShare();
+      setIsScreenSharing(false);
+      send({
+        type: "screen_share",
+        participant_id: me,
+        active: false,
+      });
+    }
+  }, [isScreenSharing, send]);
+
   const leave = useCallback(() => {
     if (selfId !== null && (phase === "joining" || phase === "joined")) {
       send({ type: "leave", participant_id: selfId });
@@ -403,6 +435,7 @@ export function useMeeting({
     remoteStreams: rtc.remoteStreams,
     isMuted: media.isMuted,
     isVideoOn: media.isVideoOn,
+    isScreenSharing,
     mediaError: media.error,
     devices: {
       audioInputDevices: media.audioInputDevices,
@@ -419,6 +452,7 @@ export function useMeeting({
     },
     toggleMute,
     toggleVideo,
+    toggleScreenShare,
     muteParticipant,
     removeParticipant,
     muteAll,
