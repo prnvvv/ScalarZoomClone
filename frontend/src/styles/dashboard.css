@@ -128,6 +128,25 @@
   gap: 14px;
 }
 
+/* Settings ----------------------------------------------------------- */
+
+.settings {
+  max-width: 720px;
+}
+
+.settings__form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 16px;
+  max-width: 420px;
+}
+
+.settings__meta {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
 /* Meeting cards ----------------------------------------------------- */
 
 .meeting-card {
