@@ -35,8 +35,11 @@ class ConnectionManager:
         participant_id: int,
         is_host: bool = False,
     ) -> Connection:
-        """Register a connection, closing any stale socket for that participant."""
-        await websocket.accept()
+        """Register a connection, closing any stale socket for this participant.
+
+        The endpoint accepts the socket before dispatch, so it is not
+        accepted again here: Starlette rejects a second accept.
+        """
 
         async with self._lock:
             meeting = self._meetings.setdefault(meeting_id, {})
