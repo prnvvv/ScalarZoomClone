@@ -113,8 +113,10 @@ def validate_meeting(db: Session, meeting_id: str) -> Meeting:
         db.commit()
         db.refresh(meeting)
         history_service.record_meeting_start(db, meeting)
-    elif meeting.status is MeetingStatus.ACTIVE and has_ended(meeting):
-        # The scheduled window elapsed without anyone ending the meeting.
+
+    if meeting.status is MeetingStatus.ACTIVE and has_ended(meeting):
+        # The window elapsed without anyone ending the meeting. Checked after
+        # activation too, so a due-but-overdue meeting never becomes joinable.
         end_meeting(db, meeting)
         raise MeetingConflictError("Meeting has ended")
 
