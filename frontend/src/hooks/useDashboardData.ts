@@ -17,11 +17,31 @@ export interface AsyncList<T> {
 interface DashboardData {
   upcoming: AsyncList<Meeting>;
   recent: AsyncList<Meeting>;
-  refreshing: boolean;
   refresh: () => Promise<void>;
 }
 
 const EMPTY: AsyncList<Meeting> = { items: [], loading: true, error: null };
+
+function toList<T>(result: PromiseSettledResult<T[]>): AsyncList<T> {
+  if (result.status === "fulfilled") {
+    return { items: result.value, loading: false, error: null };
+  }
+  return { items: [], loading: false, error: toUserMessage(result.reason) };
+}
+
+async function fetchLists(): Promise<{
+  upcoming: AsyncList<Meeting>;
+  recent: AsyncList<Meeting>;
+}> {
+  const [upcomingResult, recentResult] = await Promise.allSettled([
+    getUpcomingMeetings(),
+    getRecentMeetings(),
+  ]);
+  return {
+    upcoming: toList(upcomingResult),
+    recent: toList(recentResult),
+  };
+}
 
 /** Loads upcoming and recent meetings for the dashboard. */
 export function useDashboardData(): DashboardData {
@@ -30,44 +50,26 @@ export function useDashboardData(): DashboardData {
     ...EMPTY,
     loading: false,
   });
-  const [refreshing, setRefreshing] = useState(false);
-
-  const load = useCallback(async () => {
-    setRefreshing(true);
-    setUpcoming((current) => ({ ...current, loading: true, error: null }));
-    setRecent((current) => ({ ...current, loading: true, error: null }));
-
-    const [upcomingResult, recentResult] = await Promise.allSettled([
-      getUpcomingMeetings(),
-      getRecentMeetings(),
-    ]);
-
-    if (upcomingResult.status === "fulfilled") {
-      setUpcoming({ items: upcomingResult.value, loading: false, error: null });
-    } else {
-      setUpcoming({
-        items: [],
-        loading: false,
-        error: toUserMessage(upcomingResult.reason),
-      });
-    }
-
-    if (recentResult.status === "fulfilled") {
-      setRecent({ items: recentResult.value, loading: false, error: null });
-    } else {
-      setRecent({
-        items: [],
-        loading: false,
-        error: toUserMessage(recentResult.reason),
-      });
-    }
-
-    setRefreshing(false);
-  }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let active = true;
+    void fetchLists().then((lists) => {
+      if (!active) return;
+      setUpcoming(lists.upcoming);
+      setRecent(lists.recent);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
-  return { upcoming, recent, refreshing, refresh: load };
+  const refresh = useCallback(async () => {
+    setUpcoming((current) => ({ ...current, loading: true, error: null }));
+    setRecent((current) => ({ ...current, loading: true, error: null }));
+    const lists = await fetchLists();
+    setUpcoming(lists.upcoming);
+    setRecent(lists.recent);
+  }, []);
+
+  return { upcoming, recent, refresh };
 }
