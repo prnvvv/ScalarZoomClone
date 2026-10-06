@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import Link from "next/link";
 import { ActionTiles } from "@/components/dashboard/ActionTiles";
 import { RecentMeetingCard } from "@/components/dashboard/RecentMeetingCard";
@@ -10,13 +11,21 @@ import { SkeletonList } from "@/components/common/Skeleton";
 import { AppShell } from "@/components/layout/AppShell";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useDashboardData } from "@/hooks/useDashboardData";
-import { greetingForDate, todayLabel } from "@/lib/utils";
+import { greetingForDate } from "@/lib/utils";
 
 export default function DashboardPage() {
   const { user } = useCurrentUser();
   const { upcoming, recent, refresh } = useDashboardData();
 
   const firstName = user?.name?.split(" ")[0];
+  const [today, setToday] = React.useState<Date | null>(null);
+
+  React.useEffect(() => {
+    // Deferred so the first client render matches the server HTML; reading the
+    // clock during render would risk a hydration mismatch at a date boundary.
+    const id = window.setTimeout(() => setToday(new Date()), 0);
+    return () => window.clearTimeout(id);
+  }, []);
 
   return (
     <AppShell>
@@ -25,7 +34,12 @@ export default function DashboardPage() {
           {greetingForDate()}
           {firstName ? `, ${firstName}` : ""}
         </h1>
-        <p className="greeting__date">{todayLabel()}</p>
+        {today && <p className="greeting__date">{today.toLocaleDateString(undefined, {
+          weekday: "long",
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        })}</p>}
       </div>
 
       <ActionTiles />

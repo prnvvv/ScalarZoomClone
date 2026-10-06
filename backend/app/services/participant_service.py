@@ -47,6 +47,7 @@ def create_participant(
         meeting_id=_resolve_meeting_pk(db, meeting_id),
         display_name=display_name,
         is_host=is_host,
+        user_id=user_id,
         is_muted=False,
         is_video_on=True,
         screen_share=False,
