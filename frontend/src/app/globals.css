@@ -1,0 +1,213 @@
+/* ------------------------------------------------------------------
+   Design tokens + base styles
+   Zoom-inspired enterprise SaaS visual language.
+   ------------------------------------------------------------------ */
+
+:root {
+  /* Brand */
+  --color-primary: #0b5cff;
+  --color-primary-hover: #0a4fd9;
+  --color-primary-active: #0946bd;
+  --color-primary-soft: #eaf1ff;
+  --color-primary-soft-hover: #dce8ff;
+  --color-primary-text: #0a49c4;
+
+  /* Neutrals */
+  --color-bg: #f5f7fa;
+  --color-surface: #ffffff;
+  --color-surface-alt: #fafbfd;
+  --color-border: #e4e8ee;
+  --color-border-strong: #ccd3dd;
+  --color-text: #13161c;
+  --color-text-secondary: #566072;
+  --color-text-muted: #8790a1;
+  --color-text-inverse: #ffffff;
+
+  /* Feedback */
+  --color-danger: #d92d20;
+  --color-danger-hover: #b42318;
+  --color-danger-soft: #fdeceb;
+  --color-success: #12805c;
+  --color-success-soft: #e7f6f0;
+  --color-warning: #b54708;
+  --color-warning-soft: #fdf3e7;
+  --color-live: #e5484d;
+
+  /* Meeting room (dark environment) */
+  --room-bg: #131519;
+  --room-surface: #1c1f26;
+  --room-surface-alt: #23262e;
+  --room-border: #2f333d;
+  --room-text: #f2f4f8;
+  --room-text-secondary: #a7aebd;
+  --room-overlay: rgba(8, 10, 14, 0.72);
+  --room-shadow: 0 8px 28px rgba(0, 0, 0, 0.42);
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.0625rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-pill: 999px;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.08), 0 2px 4px rgba(16, 24, 40, 0.04);
+  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.14);
+
+  /* Layout */
+  --nav-height: 60px;
+  --sidebar-width: 232px;
+  --content-max: 1200px;
+
+  /* Motion */
+  --transition-fast: 120ms ease;
+  --transition: 180ms ease;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--color-text);
+  background-color: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: var(--text-2xl);
+  line-height: var(--leading-tight);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-size: var(--text-xl);
+  line-height: var(--leading-tight);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+h3 {
+  font-size: var(--text-lg);
+  line-height: var(--leading-tight);
+  font-weight: 600;
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+img,
+svg,
+video {
+  display: block;
+  max-width: 100%;
+}
+
+code,
+kbd {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+::selection {
+  background: var(--color-primary-soft);
+}
+
+/* Shared helpers ------------------------------------------------- */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.app-loading-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--color-text-secondary);
+  background: var(--color-bg);
+}
