@@ -16,8 +16,8 @@ export function getParticipants(
 /**
  * POST /api/meetings/{meeting_id}/participants
  *
- * Creating the row through REST lets the client attach its own user so the
- * realtime layer can derive host status server-side.
+ * Host status is derived server-side from `Meeting.host_id`, so the payload
+ * carries no user identity.
  */
 export function addParticipant(
   meetingId: string,
