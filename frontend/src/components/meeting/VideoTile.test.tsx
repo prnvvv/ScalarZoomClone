@@ -39,4 +39,37 @@ describe("VideoTile", () => {
     expect(screen.getByTestId("tile-video")).toBeTruthy();
     expect(screen.queryByText("PS")).toBeNull();
   });
+
+  it("attaches a live stream to the video element", () => {
+    const stream = { id: "remote-stream" } as unknown as MediaStream;
+    render(<VideoTile name="Rahul Verma" stream={stream} />);
+
+    const video = document.querySelector("video");
+    expect(video).toBeTruthy();
+    expect(video?.srcObject).toBe(stream);
+    expect(screen.queryByText("RV")).toBeNull();
+  });
+
+  it("keeps the local video muted to avoid echo", () => {
+    const stream = { id: "local-stream" } as unknown as MediaStream;
+    render(<VideoTile name="You" stream={stream} videoMuted />);
+    expect(document.querySelector("video")?.muted).toBe(true);
+  });
+
+  it("falls back to the avatar when the camera is off", () => {
+    const stream = { id: "remote-stream" } as unknown as MediaStream;
+    render(<VideoTile name="Rahul Verma" stream={stream} isVideoOn={false} />);
+
+    expect(document.querySelector("video")).toBeNull();
+    expect(screen.getByText("RV")).toBeTruthy();
+  });
+
+  it("detaches the stream once the camera is switched off", () => {
+    const stream = { id: "remote-stream" } as unknown as MediaStream;
+    const { rerender } = render(<VideoTile name="Rahul" stream={stream} />);
+    expect(document.querySelector("video")?.srcObject).toBe(stream);
+
+    rerender(<VideoTile name="Rahul" stream={stream} isVideoOn={false} />);
+    expect(document.querySelector("video")).toBeNull();
+  });
 });
