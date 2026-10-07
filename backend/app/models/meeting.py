@@ -72,6 +72,8 @@ class Meeting(Base):
         index=True,
     )
     meeting_link: Mapped[str] = mapped_column(String(255), unique=True)
+    # Optional meeting password, stored as a bcrypt hash. Never exposed by the API.
+    password_hash: Mapped[str | None] = mapped_column(String(255), default=None)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utc_now)
 
     host: Mapped[User] = relationship(
