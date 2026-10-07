@@ -14,7 +14,6 @@ import { deviceLabel } from "@/hooks/useMediaDevices";
 import type {
   RoomLayoutMode,
   RoomPreferences,
-  ScreenShareLayoutMode,
   VideoFitMode,
 } from "@/hooks/useRoomPreferences";
 import { cx } from "@/lib/utils";
@@ -43,7 +42,6 @@ interface MeetingSettingsDialogProps {
   isFullscreen: boolean;
   fullscreenSupported: boolean;
   onSetLayout: (layout: RoomLayoutMode) => void;
-  onSetScreenLayout: (layout: ScreenShareLayoutMode) => void;
   onSetMirrorSelf: (mirror: boolean) => void;
   onSetVideoFit: (fit: VideoFitMode) => void;
   onToggleFullscreen: () => void;
@@ -66,7 +64,7 @@ const LAYOUT_OPTIONS: {
   {
     key: "auto",
     label: "Auto",
-    hint: "Follows the active speaker and screen shares",
+    hint: "Follows the active speaker",
     icon: <AutoLayoutIcon size={18} />,
   },
   {
@@ -235,7 +233,6 @@ export function MeetingSettingsDialog({
   isFullscreen,
   fullscreenSupported,
   onSetLayout,
-  onSetScreenLayout,
   onSetMirrorSelf,
   onSetVideoFit,
   onToggleFullscreen,
@@ -458,26 +455,7 @@ export function MeetingSettingsDialog({
                   options={LAYOUT_OPTIONS}
                 />
               </div>
-              <div className="field">
-                <span className="field__label">While someone is sharing</span>
-                <ChoiceRow<ScreenShareLayoutMode>
-                  ariaLabel="Screen share layout"
-                  value={preferences.screenLayout}
-                  onChange={onSetScreenLayout}
-                  options={[
-                    {
-                      key: "focus",
-                      label: "Focused",
-                      hint: "Shared screen large, thumbnails on the side",
-                    },
-                    {
-                      key: "grid",
-                      label: "Grid",
-                      hint: "Keep the gallery; the sharer tile shows the screen",
-                    },
-                  ]}
-                />
-              </div>
+
             </div>
           ) : null}
 
