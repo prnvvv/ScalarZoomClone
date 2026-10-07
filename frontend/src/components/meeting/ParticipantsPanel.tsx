@@ -9,7 +9,6 @@ import {
   MicOffIcon,
   PhoneOffIcon,
   PinIcon,
-  ScreenShareIcon,
   UsersIcon,
   VideoIcon,
   VideoOffIcon,
@@ -173,15 +172,6 @@ export function ParticipantsPanel({
                 </div>
 
                 <div className="participant-row__indicators">
-                  {participant.screen_share ? (
-                    <span
-                      className="participant-row__indicator"
-                      title="Sharing screen"
-                      aria-label={`${participant.display_name} is sharing their screen`}
-                    >
-                      <ScreenShareIcon size={14} />
-                    </span>
-                  ) : null}
                   {participant.is_muted ? (
                     <span
                       className="participant-row__indicator"
