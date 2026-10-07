@@ -8,38 +8,10 @@ import {
 } from "@/lib/webrtc";
 import type { ClientMessage, SignalPayloadMessage } from "@/types/realtime";
 
-function errorName(cause: unknown): string {
-  if (cause instanceof Error) return cause.name;
-  if (
-    cause &&
-    typeof cause === "object" &&
-    "name" in cause &&
-    typeof (cause as { name: unknown }).name === "string"
-  ) {
-    return (cause as { name: string }).name;
-  }
-  return "";
-}
-
-function errorMessage(cause: unknown): string {
-  if (cause instanceof Error) return cause.message;
-  if (typeof cause === "string") return cause;
-  if (cause && typeof cause === "object" && "message" in cause) {
-    return String((cause as { message: unknown }).message);
-  }
-  return "";
-}
-
 interface UseWebRtcOptions {
   selfId: number | null;
   localStream: MediaStream | null;
   send: (message: ClientMessage) => void;
-  /**
-   * Fired when the user stops sharing through the browser's own UI (the
-   * floating "Stop sharing" bar) so the session can broadcast the change.
-   * Not called for a `stopScreenShare()` triggered by the app itself.
-   */
-  onScreenShareStopped?: () => void;
 }
 
 interface PeerEntry {
@@ -48,40 +20,22 @@ interface PeerEntry {
 }
 
 /**
- * Senders carrying `kind`, looked up through the transceiver as well: after
- * `replaceTrack(null)` (camera unavailable) `sender.track` is null but the
- * transceiver still knows its media kind, so screen share can find and reuse
- * the same video sender instead of silently going nowhere.
+ * Senders carrying `kind`. After `replaceTrack(null)` (camera unavailable)
+ * `sender.track` is null, so we also look through `getTransceivers()` to find
+ * the sender that belongs to a video/audio transceiver.
  */
 function sendersOfKind(pc: RTCPeerConnection, kind: string): RTCRtpSender[] {
-  return pc
-    .getSenders()
-    .filter((sender) => {
-      if (sender.track?.kind === kind) return true;
-      // `transceiver` is standard in browsers but missing from the DOM types.
-      const withTransceiver = sender as RTCRtpSender & {
-        transceiver?: RTCRtpTransceiver;
-      };
-      return withTransceiver.transceiver?.receiver.track.kind === kind;
-    });
-}
+  const byTrack = pc.getSenders().filter((sender) => sender.track?.kind === kind);
+  if (byTrack.length > 0) return byTrack;
 
-/**
- * How a screen-share attempt ended:
- * - `started` / `stopped` — state changed and peers were informed.
- * - `cancelled` — the picker was dismissed or permission denied; nothing
- *   changed and the meeting keeps running.
- * - `unsupported` — no `getDisplayMedia` (insecure context or old browser).
- * - `busy` — a share is already live or another attempt is in flight.
- * - `error` — an unexpected failure; the meeting is unaffected.
- */
-export type ScreenShareResult =
-  | "started"
-  | "stopped"
-  | "cancelled"
-  | "unsupported"
-  | "busy"
-  | "error";
+  const byTransceiver: RTCRtpSender[] = [];
+  for (const transceiver of pc.getTransceivers()) {
+    if (transceiver.receiver.track?.kind === kind) {
+      byTransceiver.push(transceiver.sender);
+    }
+  }
+  return byTransceiver;
+}
 
 export interface WebRtcState {
   remoteStreams: Record<number, MediaStream>;
@@ -90,17 +44,6 @@ export interface WebRtcState {
   handleSignal: (message: SignalPayloadMessage) => Promise<void>;
   closePeer: (peerId: number) => void;
   resetPeers: () => void;
-  /**
-   * Ask the browser for screen/window/tab capture. Resolves `started` only
-   * when a usable video track was acquired — a cancelled picker resolves
-   * `cancelled` and leaves every piece of state untouched.
-   */
-  startScreenShare: () => Promise<ScreenShareResult>;
-  /** Stop screen sharing and restore the camera track. Safe to call twice. */
-  stopScreenShare: () => void;
-  isScreenSharing: boolean;
-  /** The live display-media stream, for rendering a local share preview. */
-  screenStream: MediaStream | null;
 }
 
 /**
@@ -113,19 +56,11 @@ export function useWebRTC({
   selfId,
   localStream,
   send,
-  onScreenShareStopped,
 }: UseWebRtcOptions): WebRtcState {
   const peersRef = useRef(new Map<number, PeerEntry>());
   const selfIdRef = useRef(selfId);
   const sendRef = useRef(send);
   const [remoteStreams, setRemoteStreams] = useState<Record<number, MediaStream>>({});
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
-
-  const cameraTrackRef = useRef<MediaStreamTrack | null>(null);
-  const screenStreamRef = useRef<MediaStream | null>(null);
-  const sharePendingRef = useRef(false);
-  const onScreenShareStoppedRef = useRef(onScreenShareStopped);
 
   useEffect(() => {
     selfIdRef.current = selfId;
@@ -133,9 +68,6 @@ export function useWebRTC({
   useEffect(() => {
     sendRef.current = send;
   }, [send]);
-  useEffect(() => {
-    onScreenShareStoppedRef.current = onScreenShareStopped;
-  }, [onScreenShareStopped]);
 
   const removePeer = useCallback((peerId: number) => {
     const entry = peersRef.current.get(peerId);
@@ -156,14 +88,6 @@ export function useWebRTC({
     });
   }, []);
 
-  const replaceVideoTrack = useCallback((newTrack: MediaStreamTrack | null) => {
-    for (const { pc } of peersRef.current.values()) {
-      for (const sender of sendersOfKind(pc, "video")) {
-        void sender.replaceTrack(newTrack).catch(() => undefined);
-      }
-    }
-  }, []);
-
   const ensurePeer = useCallback(
     (peerId: number): RTCPeerConnection => {
       const existing = peersRef.current.get(peerId);
@@ -173,26 +97,10 @@ export function useWebRTC({
       const entry: PeerEntry = { pc, pendingCandidates: [] };
       peersRef.current.set(peerId, entry);
 
-      // A peer created while a share is live must receive the screen, not
-      // the camera. Audio and video senders are always reserved (via a
-      // transceiver when no track exists yet) so `replaceTrack` has
-      // somewhere to go even when the camera or microphone was never
-      // granted — otherwise a screen share with no camera transmits nothing.
-      const shareStream = screenStreamRef.current;
-      const sharedVideo =
-        shareStream?.getVideoTracks().find((t) => t.readyState !== "ended") ?? null;
       if (localStream) {
-        for (const track of localStream.getAudioTracks()) {
+        for (const track of localStream.getTracks()) {
           pc.addTrack(track, localStream);
         }
-      }
-      const outgoingVideo =
-        sharedVideo ??
-        localStream?.getVideoTracks().find((t) => t.readyState !== "ended") ??
-        null;
-      if (outgoingVideo) {
-        const owner = sharedVideo === outgoingVideo ? shareStream : localStream;
-        if (owner) pc.addTrack(outgoingVideo, owner);
       }
       if (sendersOfKind(pc, "video").length === 0) {
         pc.addTransceiver("video", { direction: "sendrecv" });
@@ -321,29 +229,10 @@ export function useWebRTC({
 
   // Attach the local stream when it arrives after peers exist. Switching a
   // device mid-meeting replaces the track on the existing sender instead of
-  // adding a second one, so no renegotiation is needed. While a screen share
-  // is live the camera must NOT take the sender back — the screen track owns
-  // it until sharing ends, and the remembered camera track is refreshed here
-  // so a device switch during a share still restores correctly.
+  // adding a second one, so no renegotiation is needed.
   useEffect(() => {
     if (!localStream) return;
-    const cameraTrack = localStream.getVideoTracks()[0] ?? null;
-    cameraTrackRef.current = cameraTrack;
     for (const { pc } of peersRef.current.values()) {
-      if (screenStreamRef.current) {
-        // The screen owns the video sender until sharing ends; only the
-        // remembered camera is refreshed for the eventual restore. Audio
-        // still attaches (e.g. Join Audio while already sharing).
-        for (const track of localStream.getAudioTracks()) {
-          const [sender] = sendersOfKind(pc, "audio");
-          if (sender) {
-            void sender.replaceTrack(track).catch(() => undefined);
-          } else {
-            pc.addTrack(track, localStream);
-          }
-        }
-        continue;
-      }
       for (const track of localStream.getTracks()) {
         const [sender] = sendersOfKind(pc, track.kind);
         if (sender) {
@@ -360,140 +249,8 @@ export function useWebRTC({
     return () => {
       for (const { pc } of peers.values()) pc.close();
       peers.clear();
-      cameraTrackRef.current = null;
-      if (screenStreamRef.current) {
-        screenStreamRef.current.getTracks().forEach((t) => t.stop());
-        screenStreamRef.current = null;
-      }
     };
   }, []);
-
-  const stopScreenShare = useCallback(() => {
-    if (!screenStreamRef.current) return;
-    screenStreamRef.current.getTracks().forEach((track) => {
-      track.onended = null;
-      track.stop();
-    });
-    screenStreamRef.current = null;
-    setScreenStream(null);
-    replaceVideoTrack(cameraTrackRef.current);
-    setIsScreenSharing(false);
-  }, [replaceVideoTrack]);
-
-  const startScreenShare = useCallback(async (): Promise<ScreenShareResult> => {
-    // A second click while the picker or a previous attempt is in flight
-    // must not open another picker or leak a stream.
-    if (screenStreamRef.current || sharePendingRef.current) return "busy";
-
-    // Diagnostics: log the runtime context so we can see why a browser refuses.
-    const secureContext =
-      typeof window !== "undefined" &&
-      (window as Window & { isSecureContext?: boolean }).isSecureContext ===
-        true;
-    const inIframe =
-      typeof window !== "undefined" && window.self !== window.top;
-    const apiAvailable =
-      typeof navigator !== "undefined" &&
-      typeof navigator.mediaDevices?.getDisplayMedia === "function";
-
-    console.log("[screen share] secureContext:", secureContext);
-    console.log("[screen share] inIframe:", inIframe);
-    console.log("[screen share] getDisplayMedia available:", apiAvailable);
-
-    if (!apiAvailable) {
-      return "unsupported";
-    }
-
-    const tryGetDisplayMedia = async (
-      constraints: DisplayMediaStreamOptions
-    ): Promise<MediaStream> => {
-      console.log("[screen share] trying constraints:", constraints);
-      return navigator.mediaDevices.getDisplayMedia(constraints);
-    };
-
-    sharePendingRef.current = true;
-    try {
-      let display: MediaStream | undefined;
-      let lastError: unknown;
-
-      // Try every constraint shape known to work in different browsers.
-      const constraintAttempts: DisplayMediaStreamOptions[] = [
-        { video: true, audio: false },
-        { video: true },
-        {},
-      ];
-
-      for (const constraints of constraintAttempts) {
-        try {
-          display = await tryGetDisplayMedia(constraints);
-          lastError = undefined;
-          break;
-        } catch (cause: unknown) {
-          lastError = cause;
-          const name = errorName(cause);
-          const message = errorMessage(cause);
-          console.log(
-            `[screen share] constraints failed: ${name} - ${message}`,
-            cause
-          );
-          // If the browser rejected the constraints themselves, try the next
-          // shape. Anything else (permission, security, cancellation) is final.
-          if (name !== "TypeError" && name !== "OverconstrainedError") {
-            break;
-          }
-        }
-      }
-
-      if (display === undefined) {
-        const cause = lastError;
-        const name = errorName(cause);
-        const message = errorMessage(cause).toLowerCase();
-        console.error("[screen share] final error:", cause);
-        const isUserCancel =
-          name === "NotAllowedError" ||
-          name === "AbortError" ||
-          name === "NotFoundError" ||
-          name === "NotReadableError" ||
-          message.includes("cancel") ||
-          message.includes("denied") ||
-          message.includes("dismiss") ||
-          message.includes("permission");
-        if (isUserCancel) {
-          return "cancelled";
-        }
-        if (name === "SecurityError" || !secureContext) {
-          return "unsupported";
-        }
-        return "error";
-      }
-
-      const screenTrack = display.getVideoTracks()[0];
-      console.log("[screen share] acquired track:", screenTrack?.label, screenTrack?.readyState);
-      if (!screenTrack || screenTrack.readyState === "ended") {
-        display.getTracks().forEach((track) => track.stop());
-        console.error("[screen share] no usable video track in stream");
-        return "error";
-      }
-
-      cameraTrackRef.current = localStream?.getVideoTracks()[0] ?? null;
-      screenStreamRef.current = display;
-      setScreenStream(display);
-      replaceVideoTrack(screenTrack);
-      setIsScreenSharing(true);
-
-      // Stopping from the browser's own floating bar must look identical to
-      // stopping from the app: restore the camera and tell the session.
-      screenTrack.onended = () => {
-        console.log("[screen share] track ended via browser UI");
-        if (screenStreamRef.current !== display) return;
-        stopScreenShare();
-        onScreenShareStoppedRef.current?.();
-      };
-      return "started";
-    } finally {
-      sharePendingRef.current = false;
-    }
-  }, [localStream, replaceVideoTrack, stopScreenShare]);
 
   return {
     remoteStreams,
@@ -501,10 +258,6 @@ export function useWebRTC({
     handleSignal,
     closePeer: removePeer,
     resetPeers,
-    startScreenShare,
-    stopScreenShare,
-    isScreenSharing,
-    screenStream,
   };
 }
 
