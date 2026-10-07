@@ -14,10 +14,12 @@ DisplayName = Annotated[
 class MeetingCreate(BaseModel):
     title: Title
     description: str | None = Field(default=None, max_length=5000)
+    password: str | None = Field(default=None, max_length=128)
 
 
 class MeetingJoinRequest(BaseModel):
     display_name: DisplayName
+    password: str | None = Field(default=None, max_length=128)
 
 
 class MeetingResponse(BaseModel):
