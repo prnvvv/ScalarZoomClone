@@ -194,13 +194,21 @@ export default function MeetingRoomPage() {
   // Share failures (unsupported context, unexpected browser error) surface
   // as a toast; a dismissed picker stays silent, like Zoom.
   const handleScreenShare = useCallback(() => {
-    void session.toggleScreenShare().then((result) => {
-      if (result === "unsupported") {
-        toast("Screen sharing needs HTTPS or localhost in this browser.", "error");
-      } else if (result === "error") {
+    void session
+      .toggleScreenShare()
+      .then((result) => {
+        if (result === "unsupported") {
+          toast(
+            "Screen sharing needs HTTPS or localhost in this browser.",
+            "error"
+          );
+        } else if (result === "error") {
+          toast("Couldn't share your screen. Please try again.", "error");
+        }
+      })
+      .catch(() => {
         toast("Couldn't share your screen. Please try again.", "error");
-      }
-    });
+      });
   }, [session, toast]);
 
   // One overlay at a time; Escape closes whichever is open.
