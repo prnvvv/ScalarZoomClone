@@ -13,7 +13,6 @@ const setVideoOn = vi.hoisted(() => vi.fn());
 const stopMedia = vi.hoisted(() => vi.fn());
 const acquire = vi.hoisted(() => vi.fn());
 const joinAudio = vi.hoisted(() => vi.fn());
-const startScreenShare = vi.hoisted(() => vi.fn());
 const mediaFlags = vi.hoisted(() => ({ audioJoined: false, isVideoOn: false }));
 const syncPeers = vi.hoisted(() => vi.fn());
 const resetPeers = vi.hoisted(() => vi.fn());
@@ -62,14 +61,10 @@ vi.mock("@/hooks/useMediaDevices", () => ({
 vi.mock("@/hooks/useWebRTC", () => ({
   useWebRTC: () => ({
     remoteStreams: {},
-    screenStream: null,
     syncPeers,
     handleSignal,
     closePeer,
     resetPeers,
-    startScreenShare,
-    stopScreenShare: vi.fn(),
-    onScreenShareStopped: vi.fn(),
   }),
 }));
 
@@ -157,7 +152,6 @@ beforeEach(() => {
   joinMeeting.mockReset().mockResolvedValue(undefined);
   acquire.mockReset().mockResolvedValue(undefined);
   joinAudio.mockReset().mockResolvedValue(true);
-  startScreenShare.mockReset().mockResolvedValue("cancelled");
   setMuted.mockReset();
   setVideoOn.mockReset();
   stopMedia.mockReset();
@@ -275,7 +269,6 @@ describe("useMeeting server events", () => {
         is_host: false,
         is_muted: false,
         is_video_on: true,
-        screen_share: false,
       },
     });
     expect(result.current.participants.map((p) => p.id)).toContain(7);
@@ -296,7 +289,6 @@ describe("useMeeting server events", () => {
         is_host: false,
         is_muted: false,
         is_video_on: true,
-        screen_share: false,
       },
     };
     emit(announcement);
@@ -315,7 +307,6 @@ describe("useMeeting server events", () => {
         is_host: false,
         is_muted: false,
         is_video_on: true,
-        screen_share: false,
       },
     });
 
@@ -668,59 +659,5 @@ describe("useMeeting media controls", () => {
     const { result } = await joinedSession();
     act(() => result.current.toggleVideo());
     expect(setVideoOn).toHaveBeenCalledWith(false);
-  });
-
-  it("does not broadcast screen_share when the picker is cancelled", async () => {
-    const { result } = await joinedSession();
-    startScreenShare.mockResolvedValue("cancelled");
-    let outcome = "";
-    await act(async () => {
-      outcome = await result.current.toggleScreenShare();
-    });
-    expect(outcome).toBe("cancelled");
-    expect(sentOfType("screen_share")).toHaveLength(0);
-    expect(result.current.isScreenSharing).toBe(false);
-  });
-
-  it("broadcasts screen_share only after a successful start", async () => {
-    const { result } = await joinedSession();
-    startScreenShare.mockResolvedValue("started");
-    let outcome = "";
-    await act(async () => {
-      outcome = await result.current.toggleScreenShare();
-    });
-    expect(outcome).toBe("started");
-    expect(sentOfType("screen_share")[0]).toMatchObject({ active: true });
-    expect(result.current.isScreenSharing).toBe(true);
-  });
-
-  it("stops sharing and reports it to the room", async () => {
-    const { result } = await joinedSession();
-    startScreenShare.mockResolvedValue("started");
-    await act(async () => {
-      await result.current.toggleScreenShare();
-    });
-
-    let outcome = "";
-    await act(async () => {
-      outcome = await result.current.toggleScreenShare();
-    });
-    expect(outcome).toBe("stopped");
-    const events = sentOfType("screen_share");
-    expect(events).toHaveLength(2);
-    expect(events[1]).toMatchObject({ active: false });
-    expect(result.current.isScreenSharing).toBe(false);
-  });
-
-  it("reports an unexpected share failure without touching the room", async () => {
-    const { result } = await joinedSession();
-    startScreenShare.mockResolvedValue("error");
-    let outcome = "";
-    await act(async () => {
-      outcome = await result.current.toggleScreenShare();
-    });
-    expect(outcome).toBe("error");
-    expect(sentOfType("screen_share")).toHaveLength(0);
-    expect(result.current.isScreenSharing).toBe(false);
   });
 });
