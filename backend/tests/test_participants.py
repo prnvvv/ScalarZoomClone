@@ -109,8 +109,9 @@ def test_participant_out_validates_against_a_model_row(db):
     # Internal primary key, not the public nine-digit id.
     assert payload.meeting_id == meeting.id
     assert payload.display_name == "Ann"
-    assert payload.is_video_on is True
-    assert payload.is_muted is False
+    # New joiners start with mic/camera off until their media_state arrives.
+    assert payload.is_video_on is False
+    assert payload.is_muted is True
 
 
 # --------------------------------------------------------------------------
