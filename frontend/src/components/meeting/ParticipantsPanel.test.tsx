@@ -17,7 +17,6 @@ function participant(
     is_host: false,
     is_muted: false,
     is_video_on: true,
-    screen_share: false,
     ...overrides,
   };
 }
@@ -85,16 +84,6 @@ describe("ParticipantsPanel", () => {
     const carol = screen.getByText("Carol").closest(".participant-row");
     expect(carol?.textContent).toContain("Unmuted");
     expect(carol?.textContent).toContain("Camera on");
-  });
-
-  it("shows the screen share indicator when someone is presenting", () => {
-    renderPanel({
-      participants: [participant(4, "Dana", { screen_share: true })],
-      selfId: null,
-    });
-    expect(
-      screen.getByLabelText("Dana is sharing their screen")
-    ).toBeTruthy();
   });
 
   it("hides host controls from participants", () => {
