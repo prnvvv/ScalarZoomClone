@@ -30,6 +30,15 @@ vi.mock("@/services/api", () => ({
   getCurrentUser,
 }));
 
+vi.mock("@clerk/nextjs", () => ({
+  SignInButton: ({ children }: { children: React.ReactNode }) => children,
+  SignUpButton: ({ children }: { children: React.ReactNode }) => children,
+  Show: ({ when, children }: { when: string; children: React.ReactNode }) =>
+    when === "signed-out" ? children : null,
+  UserButton: () => null,
+  useUser: () => ({ user: null, isLoaded: true }),
+}));
+
 beforeEach(() => {
   window.sessionStorage.clear();
   getCurrentUser.mockReset();
@@ -54,10 +63,10 @@ describe("settings page", () => {
   it("renders each settings section", () => {
     renderPage();
     expect(screen.getByRole("heading", { name: "Settings", level: 1 })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Profile" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Account" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Meeting display name" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Audio and video" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Appearance" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "About" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /About/ })).toBeTruthy();
   });
 
   it("starts from the display name saved earlier in the tab", () => {
@@ -108,9 +117,9 @@ describe("settings page", () => {
 
   it("shows who the demo user is", () => {
     renderPage();
-    expect(
-      screen.getByText(/Signed in as Demo User · demo@example.com/)
-    ).toBeTruthy();
+    expect(screen.getByText("Demo User")).toBeTruthy();
+    expect(screen.getByText(/Using the demo account/)).toBeTruthy();
+    expect(screen.getByText("demo@example.com")).toBeTruthy();
   });
 
   it("explains that no camera or microphone is available yet", () => {
