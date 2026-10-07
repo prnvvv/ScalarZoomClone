@@ -6,15 +6,11 @@ import { STORAGE_KEYS } from "@/lib/constants";
 /** Tile arrangement modes; each one genuinely changes the rendered layout. */
 export type RoomLayoutMode = "auto" | "gallery" | "speaker";
 
-/** How the stage behaves while somebody shares their screen. */
-export type ScreenShareLayoutMode = "focus" | "grid";
-
 /** How video fills a tile. */
 export type VideoFitMode = "fill" | "fit";
 
 export interface RoomPreferences {
   layout: RoomLayoutMode;
-  screenLayout: ScreenShareLayoutMode;
   /** Mirror the local camera preview (display-only, like Zoom). */
   mirrorSelf: boolean;
   videoFit: VideoFitMode;
@@ -22,13 +18,11 @@ export interface RoomPreferences {
 
 export const DEFAULT_ROOM_PREFERENCES: RoomPreferences = {
   layout: "auto",
-  screenLayout: "focus",
   mirrorSelf: true,
   videoFit: "fill",
 };
 
 const LAYOUTS: RoomLayoutMode[] = ["auto", "gallery", "speaker"];
-const SCREEN_LAYOUTS: ScreenShareLayoutMode[] = ["focus", "grid"];
 const FITS: VideoFitMode[] = ["fill", "fit"];
 
 function sanitize(raw: unknown): RoomPreferences {
@@ -37,9 +31,6 @@ function sanitize(raw: unknown): RoomPreferences {
     layout: LAYOUTS.includes(value.layout as RoomLayoutMode)
       ? (value.layout as RoomLayoutMode)
       : DEFAULT_ROOM_PREFERENCES.layout,
-    screenLayout: SCREEN_LAYOUTS.includes(value.screenLayout as ScreenShareLayoutMode)
-      ? (value.screenLayout as ScreenShareLayoutMode)
-      : DEFAULT_ROOM_PREFERENCES.screenLayout,
     mirrorSelf:
       typeof value.mirrorSelf === "boolean"
         ? value.mirrorSelf
@@ -61,14 +52,13 @@ function read(): RoomPreferences {
 }
 
 /**
- * Room view preferences (layout, screen-share layout, mirroring, video fit),
+ * Room view preferences (layout, mirroring, video fit),
  * persisted to localStorage so the choice survives refreshes and later
  * meetings. Every field drives real rendering behaviour.
  */
 export function useRoomPreferences(): {
   preferences: RoomPreferences;
   setLayout: (layout: RoomLayoutMode) => void;
-  setScreenLayout: (layout: ScreenShareLayoutMode) => void;
   setMirrorSelf: (mirror: boolean) => void;
   setVideoFit: (fit: VideoFitMode) => void;
 } {
@@ -95,10 +85,6 @@ export function useRoomPreferences(): {
     preferences,
     setLayout: useCallback(
       (layout: RoomLayoutMode) => update({ layout }),
-      [update]
-    ),
-    setScreenLayout: useCallback(
-      (screenLayout: ScreenShareLayoutMode) => update({ screenLayout }),
       [update]
     ),
     setMirrorSelf: useCallback(
