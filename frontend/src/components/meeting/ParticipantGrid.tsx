@@ -3,10 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { VideoTile } from "@/components/meeting/VideoTile";
 import { useElementSize } from "@/hooks/useElementSize";
-import type {
-  RoomLayoutMode,
-  ScreenShareLayoutMode,
-} from "@/hooks/useRoomPreferences";
+import type { RoomLayoutMode } from "@/hooks/useRoomPreferences";
 import { fitGrid, lastRowStart, pageSlice } from "@/lib/gridLayout";
 import { cx } from "@/lib/utils";
 
@@ -16,8 +13,6 @@ export interface StageTile {
   isMuted: boolean;
   isHost: boolean;
   isVideoOn: boolean;
-  /** This participant's video track currently carries their screen. */
-  isScreenShare: boolean;
   stream: MediaStream | null;
   reactions: string[];
   isSelf: boolean;
@@ -26,7 +21,6 @@ export interface StageTile {
 interface ParticipantGridProps {
   tiles: StageTile[];
   layout: RoomLayoutMode;
-  screenLayout: ScreenShareLayoutMode;
   activeSpeakerId: number | null;
   pinnedId: number | null;
   mirroredSelf: boolean;
@@ -37,13 +31,9 @@ interface ParticipantGridProps {
 
 function pickMain(
   tiles: StageTile[],
-  mode: "share" | "speaker",
   activeSpeakerId: number | null,
   pinnedId: number | null
 ): StageTile | null {
-  if (mode === "share") {
-    return tiles.find((tile) => tile.isScreenShare) ?? null;
-  }
   if (pinnedId !== null) {
     const pinned = tiles.find((tile) => tile.id === pinnedId);
     if (pinned) return pinned;
@@ -56,14 +46,13 @@ function pickMain(
 }
 
 /**
- * The meeting stage: gallery grid, speaker view or screen-share focus view.
+ * The meeting stage: gallery grid or speaker view.
  * Every mode re-fits from the measured stage size, so tiles never overlap the
  * toolbar and never overflow the viewport.
  */
 export function ParticipantGrid({
   tiles,
   layout,
-  screenLayout,
   activeSpeakerId,
   pinnedId,
   mirroredSelf,
@@ -73,29 +62,21 @@ export function ParticipantGrid({
   const [stageRef, size] = useElementSize<HTMLDivElement>();
   const [page, setPage] = useState(0);
 
-  const sharing = useMemo(
-    () => tiles.find((tile) => tile.isScreenShare) ?? null,
-    [tiles]
-  );
-
-  const mode: "gallery" | "speaker" | "focus" = useMemo(() => {
+  const mode: "gallery" | "speaker" = useMemo(() => {
     if (layout === "gallery") return "gallery";
     if (layout === "speaker") return "speaker";
     // auto
-    if (sharing && screenLayout === "focus") return "focus";
     if (pinnedId !== null && tiles.some((tile) => tile.id === pinnedId)) {
       return "speaker";
     }
     if (activeSpeakerId !== null && tiles.length > 1) return "speaker";
     return "gallery";
-  }, [layout, screenLayout, sharing, pinnedId, activeSpeakerId, tiles]);
+  }, [layout, pinnedId, activeSpeakerId, tiles]);
 
   const focused =
-    mode === "focus"
-      ? pickMain(tiles, "share", activeSpeakerId, pinnedId)
-      : mode === "speaker"
-        ? pickMain(tiles, "speaker", activeSpeakerId, pinnedId)
-        : null;
+    mode === "speaker"
+      ? pickMain(tiles, activeSpeakerId, pinnedId)
+      : null;
   const focusedId = focused?.id ?? null;
   const filmstrip = focused ? tiles.filter((tile) => tile.id !== focusedId) : tiles;
 
@@ -116,13 +97,12 @@ export function ParticipantGrid({
       name={tile.isSelf ? `${tile.name} (You)` : tile.name}
       isMuted={tile.isMuted}
       isHost={tile.isHost}
-      speaking={!tile.isScreenShare && tile.id === activeSpeakerId}
+      speaking={tile.id === activeSpeakerId}
       stream={tile.stream}
       isVideoOn={tile.isVideoOn}
       videoMuted={tile.isSelf}
-      mirrored={tile.isSelf && mirroredSelf && !tile.isScreenShare}
-      fit={tile.isScreenShare ? "fit" : videoFit}
-      isScreenShare={tile.isScreenShare}
+      mirrored={tile.isSelf && mirroredSelf}
+      fit={videoFit}
       isPinned={tile.id === pinnedId}
       reactions={tile.reactions}
       menu={renderMenu?.(tile)}
