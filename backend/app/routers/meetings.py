@@ -7,6 +7,7 @@ from app.models.user import DEMO_USER_ID
 from app.schemas.meeting import MeetingCreate, MeetingJoinRequest, MeetingResponse
 from app.services import meeting_service
 from app.services.exceptions import (
+    InvalidPasswordError,
     InvalidRequestError,
     MeetingConflictError,
     MeetingNotFoundError,
@@ -22,6 +23,8 @@ def _http_error(exc: Exception) -> HTTPException:
         return HTTPException(status.HTTP_404_NOT_FOUND, str(exc) or "Meeting not found")
     if isinstance(exc, MeetingConflictError):
         return HTTPException(status.HTTP_409_CONFLICT, str(exc) or "Meeting conflict")
+    if isinstance(exc, InvalidPasswordError):
+        return HTTPException(status.HTTP_403_FORBIDDEN, str(exc) or "Incorrect meeting password")
     return HTTPException(status.HTTP_400_BAD_REQUEST, str(exc) or "Invalid request")
 
 
@@ -55,8 +58,15 @@ def join_meeting(
     Participant records and realtime state are created over WebSocket.
     """
     try:
-        return meeting_service.validate_meeting(db, meeting_id)
-    except (MeetingNotFoundError, MeetingConflictError, InvalidRequestError) as exc:
+        return meeting_service.validate_meeting(
+            db, meeting_id, password=payload.password
+        )
+    except (
+        MeetingNotFoundError,
+        MeetingConflictError,
+        InvalidRequestError,
+        InvalidPasswordError,
+    ) as exc:
         raise _http_error(exc) from exc
 
 
