@@ -18,7 +18,11 @@ export function JoinForm() {
   const router = useRouter();
   const { toast } = useToast();
 
-  const [values, setValues] = useState({ meetingId: "", displayName: "" });
+  const [values, setValues] = useState({
+    meetingId: "",
+    displayName: "",
+    password: "",
+  });
   const [fieldErrors, setFieldErrors] = useState<FieldError[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -42,11 +46,18 @@ export function JoinForm() {
     try {
       await joinMeeting(meetingId, {
         display_name: values.displayName.trim(),
+        password: values.password.trim() || undefined,
       });
       window.sessionStorage.setItem(
         STORAGE_KEYS.displayName,
         values.displayName.trim()
       );
+      if (values.password.trim()) {
+        window.sessionStorage.setItem(
+          STORAGE_KEYS.meetingPassword(meetingId),
+          values.password.trim()
+        );
+      }
       toast(`Joining as ${values.displayName.trim()}`, "success");
       router.push(`/meetings/${meetingId}`);
     } catch (error) {
@@ -125,6 +136,26 @@ export function JoinForm() {
               {errorFor("displayName")}
             </span>
           ) : null}
+        </div>
+
+        <div className="field">
+          <label className="field__label" htmlFor="join-password">
+            Meeting password (optional)
+          </label>
+          <input
+            id="join-password"
+            className="input"
+            type="password"
+            placeholder="Required only if the host set one"
+            value={values.password}
+            autoComplete="off"
+            onChange={(event) =>
+              setValues((current) => ({
+                ...current,
+                password: event.target.value,
+              }))
+            }
+          />
         </div>
       </div>
 
