@@ -1,5 +1,5 @@
 # Backend container for Cloud Run / GCP.
-# Build context: repository root (so backend/ is available).
+# Build context: backend/ (run from the backend directory).
 FROM python:3.13-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -9,17 +9,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Install build dependencies for psycopg2-binary.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY backend/requirements.txt .
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY backend/app ./app
-COPY backend/data ./data
+COPY app ./app
+COPY data ./data
 
 # Cloud Run sets PORT; default to 8000 for local Docker runs.
 ENV PORT=8000
