@@ -8,6 +8,28 @@ import {
 } from "@/lib/webrtc";
 import type { ClientMessage, SignalPayloadMessage } from "@/types/realtime";
 
+function errorName(cause: unknown): string {
+  if (cause instanceof Error) return cause.name;
+  if (
+    cause &&
+    typeof cause === "object" &&
+    "name" in cause &&
+    typeof (cause as { name: unknown }).name === "string"
+  ) {
+    return (cause as { name: string }).name;
+  }
+  return "";
+}
+
+function errorMessage(cause: unknown): string {
+  if (cause instanceof Error) return cause.message;
+  if (typeof cause === "string") return cause;
+  if (cause && typeof cause === "object" && "message" in cause) {
+    return String((cause as { message: unknown }).message);
+  }
+  return "";
+}
+
 interface UseWebRtcOptions {
   selfId: number | null;
   localStream: MediaStream | null;
@@ -369,29 +391,37 @@ export function useWebRTC({
     try {
       let display: MediaStream;
       try {
+        // Use the most widely-compatible constraint form. Some browsers reject
+        // an explicit audio constraint or only support { video: true }.
         display = await navigator.mediaDevices.getDisplayMedia({
           video: true,
-          audio: false,
         });
       } catch (cause: unknown) {
-        // Chrome reports both a dismissed picker and a denied permission as
-        // NotAllowedError; either way nothing changed yet.
-        const name = cause instanceof Error ? cause.name : "";
-        if (name === "NotAllowedError" || name === "AbortError") {
+        const name = errorName(cause);
+        const message = errorMessage(cause).toLowerCase();
+        const isUserCancel =
+          name === "NotAllowedError" ||
+          name === "AbortError" ||
+          name === "NotFoundError" ||
+          name === "NotReadableError" ||
+          message.includes("cancel") ||
+          message.includes("denied") ||
+          message.includes("dismiss") ||
+          message.includes("permission");
+        if (isUserCancel) {
           return "cancelled";
         }
-        // getDisplayMedia exists but is blocked by the browser (e.g. insecure
-        // HTTP origin); surface the same message as an unsupported context.
-        if (name === "SecurityError") {
+        if (name === "SecurityError" || name === "OverconstrainedError") {
           return "unsupported";
         }
+        console.error("Screen share failed:", cause);
         return "error";
       }
 
       const screenTrack = display.getVideoTracks()[0];
-      if (!screenTrack) {
+      if (!screenTrack || screenTrack.readyState === "ended") {
         display.getTracks().forEach((track) => track.stop());
-        return "error";
+        return "unsupported";
       }
 
       cameraTrackRef.current = localStream?.getVideoTracks()[0] ?? null;
