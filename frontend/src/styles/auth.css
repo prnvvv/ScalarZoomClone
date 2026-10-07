@@ -1,212 +1,56 @@
-/* ------------------------------------------------------------------
-   Authentication pages (Clerk SignIn / SignUp)
-   One intentional, centered authentication surface: brand on top, a
-   single white panel below, minimal footer. Clerk renders flush inside
-   the panel (no card inside a card). Critical surface and control styles
-   are applied as inline element styles by `auth-appearance.ts`; this file
-   provides the page layout plus interactive and micro spacing polish.
-   ------------------------------------------------------------------ */
-
-.auth-page {
+.signin-split {
   display: flex;
-  flex-direction: column;
   min-height: 100vh;
-  background: var(--color-bg);
-}
-
-/* Brand -------------------------------------------------------------- */
-
-.auth-page__header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 44px 20px 0;
-}
-
-.auth-page__brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--color-text);
-  text-decoration: none;
-  line-height: 1;
-}
-
-.auth-page__brand:hover {
-  text-decoration: none;
-}
-
-.auth-page__logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-primary);
-}
-
-.auth-page__name {
-  font-size: var(--text-xl);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-/* Surface ------------------------------------------------------------- */
-
-.auth-page__main {
-  display: flex;
-  flex: 1;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 28px 16px 48px;
-}
-
-.auth-panel {
   width: 100%;
-  max-width: 420px;
-  padding: 28px 32px 24px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  background: #ffffff;
+  overflow: hidden;
 }
 
-/* Footer -------------------------------------------------------------- */
-
-.auth-page__footer {
+.signin-split__left,
+.signin-split__right {
+  flex: 1 1 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 20px;
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
+  min-width: 0;
 }
 
-/* Clerk interaction + micro spacing (scoped to the auth surface) ------ */
-
-/* Hover / active feedback the inline element styles cannot express. */
-.auth-panel .cl-socialButtonsBlockButton:hover:not(:disabled) {
-  background-color: var(--color-surface-alt) !important;
-  border-color: var(--color-text-muted) !important;
+.signin-split__left {
+  padding: 40px;
+  background: #f7f9fc;
 }
 
-.auth-panel .cl-socialButtonsBlockButton:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
+.signin-split__logo {
+  position: relative;
+  width: min(1360px, 95%);
+  aspect-ratio: 16 / 9;
 }
 
-.auth-panel .cl-socialButtonsBlockButtonText {
-  color: inherit;
+.signin-split__image {
+  object-fit: contain;
 }
 
-.auth-panel .cl-formFieldInput {
-  transition: border-color var(--transition-fast),
-    box-shadow var(--transition-fast);
+.signin-split__right {
+  padding: 24px;
 }
 
-.auth-panel .cl-formFieldInput:hover {
-  border-color: var(--color-text-muted) !important;
-}
-
-.auth-panel .cl-formFieldInput:focus {
-  outline: none;
-  border-color: var(--color-primary) !important;
-  box-shadow: 0 0 0 3px rgba(11, 92, 255, 0.16);
-}
-
-.auth-panel .cl-formButtonPrimary {
-  transition: background-color var(--transition-fast),
-    box-shadow var(--transition-fast);
-}
-
-.auth-panel .cl-formButtonPrimary:hover:not(:disabled) {
-  background-color: var(--color-primary-hover) !important;
-}
-
-.auth-panel .cl-formButtonPrimary:active:not(:disabled) {
-  background-color: var(--color-primary-active) !important;
-}
-
-.auth-panel .cl-formButtonPrimary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.auth-panel .cl-formButtonReset:hover {
-  text-decoration: underline;
-}
-
-.auth-panel .cl-footerActionLink:hover {
-  text-decoration: underline;
-}
-
-.auth-panel .cl-identityPreviewText {
-  font-size: var(--text-sm);
-  color: var(--color-text);
-  word-break: break-word;
-}
-
-.auth-panel .cl-identityPreviewEditButton:hover {
-  text-decoration: underline;
-}
-
-.auth-panel .cl-alertText {
-  line-height: var(--leading-normal);
-}
-
-.auth-panel .cl-otpCodeFieldInput {
-  transition: border-color var(--transition-fast),
-    box-shadow var(--transition-fast);
-}
-
-.auth-panel .cl-otpCodeFieldInput:focus {
-  outline: none;
-  border-color: var(--color-primary) !important;
-  box-shadow: 0 0 0 3px rgba(11, 92, 255, 0.16);
-}
-
-.auth-panel .cl-spinner {
-  animation: cl-spin 700ms linear infinite;
-}
-
-@keyframes cl-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* Clerk footer chrome: keep "Secured by Clerk" / dev badge subtle. */
-.auth-panel .cl-footer {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-}
-
-.auth-panel .cl-footer p {
-  margin: 2px 0;
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-}
-
-.auth-panel .cl-footer a {
-  font-size: var(--text-xs);
-}
-
-.auth-panel .cl-badge {
-  font-size: var(--text-xs);
-}
-
-/* Responsive ---------------------------------------------------------- */
-
-@media (max-width: 480px) {
-  .auth-page__header {
-    padding: 32px 16px 0;
+@media (max-width: 768px) {
+  .signin-split {
+    flex-direction: column;
   }
 
-  .auth-page__main {
-    padding: 24px 14px 40px;
+  .signin-split__left {
+    flex: 0 0 auto;
+    min-height: 220px;
+    padding: 32px;
   }
 
-  .auth-panel {
-    padding: 24px 20px 20px;
-    box-shadow: none;
+  .signin-split__logo {
+    width: min(720px, 95%);
+  }
+
+  .signin-split__right {
+    flex: 1 1 auto;
+    padding: 24px;
   }
 }
