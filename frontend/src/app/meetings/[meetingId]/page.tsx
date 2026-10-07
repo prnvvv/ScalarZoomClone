@@ -191,26 +191,6 @@ export default function MeetingRoomPage() {
     toast("Asked everyone to mute", "success");
   }, [muteEveryone, toast]);
 
-  // Share failures (unsupported context, unexpected browser error) surface
-  // as a toast; a dismissed picker stays silent, like Zoom.
-  const handleScreenShare = useCallback(() => {
-    void session
-      .toggleScreenShare()
-      .then((result) => {
-        if (result === "unsupported") {
-          toast(
-            "Screen sharing needs HTTPS or localhost in this browser.",
-            "error"
-          );
-        } else if (result === "error") {
-          toast("Couldn't share your screen. Please try again.", "error");
-        }
-      })
-      .catch(() => {
-        toast("Couldn't share your screen. Please try again.", "error");
-      });
-  }, [session, toast]);
-
   // One overlay at a time; Escape closes whichever is open.
   useEffect(() => {
     if (!panelOpen && !settingsOpen && !confirmEnd) return;
@@ -425,10 +405,7 @@ export default function MeetingRoomPage() {
       isMuted: session.isMuted,
       isHost: isLocalHost,
       isVideoOn: session.isVideoOn,
-      isScreenShare: session.isScreenSharing ?? false,
-      stream: session.isScreenSharing
-        ? (session.screenShareStream ?? session.localStream)
-        : session.localStream,
+      stream: session.localStream,
       reactions: reactionsByParticipant.get(selfKey) ?? [],
       isSelf: true,
     },
@@ -438,7 +415,6 @@ export default function MeetingRoomPage() {
       isMuted: participant.is_muted,
       isHost: participant.is_host,
       isVideoOn: participant.is_video_on,
-      isScreenShare: participant.screen_share ?? false,
       stream: session.remoteStreams[participant.id] ?? null,
       reactions: reactionsByParticipant.get(participant.id) ?? [],
       isSelf: false,
@@ -551,7 +527,6 @@ export default function MeetingRoomPage() {
         <ParticipantGrid
           tiles={tiles}
           layout={prefs.preferences.layout}
-          screenLayout={prefs.preferences.screenLayout}
           activeSpeakerId={activeSpeakerId}
           pinnedId={pinnedId}
           mirroredSelf={prefs.preferences.mirrorSelf}
@@ -567,7 +542,6 @@ export default function MeetingRoomPage() {
         audioAvailable={session.audioAvailable}
         videoAvailable={session.videoAvailable}
         participantsOpen={panelOpen}
-        isScreenSharing={session.isScreenSharing}
         isHost={session.isHost}
         layout={prefs.preferences.layout}
         isFullscreen={isFullscreen}
@@ -576,7 +550,6 @@ export default function MeetingRoomPage() {
         onToggleMute={session.toggleMute}
         onToggleVideo={session.toggleVideo}
         onToggleParticipants={toggleParticipants}
-        onToggleScreenShare={handleScreenShare}
         onReact={session.sendReaction}
         onSetLayout={prefs.setLayout}
         onOpenSettings={openSettings}
@@ -597,7 +570,6 @@ export default function MeetingRoomPage() {
         isFullscreen={isFullscreen}
         fullscreenSupported={fullscreenSupported}
         onSetLayout={prefs.setLayout}
-        onSetScreenLayout={prefs.setScreenLayout}
         onSetMirrorSelf={prefs.setMirrorSelf}
         onSetVideoFit={prefs.setVideoFit}
         onToggleFullscreen={toggleFullscreen}
