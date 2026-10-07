@@ -384,16 +384,30 @@ export function useWebRTC({
     // A second click while the picker or a previous attempt is in flight
     // must not open another picker or leak a stream.
     if (screenStreamRef.current || sharePendingRef.current) return "busy";
-    if (
-      typeof navigator === "undefined" ||
-      typeof navigator.mediaDevices?.getDisplayMedia !== "function"
-    ) {
+
+    // Diagnostics: log the runtime context so we can see why a browser refuses.
+    const secureContext =
+      typeof window !== "undefined" &&
+      (window as Window & { isSecureContext?: boolean }).isSecureContext ===
+        true;
+    const inIframe =
+      typeof window !== "undefined" && window.self !== window.top;
+    const apiAvailable =
+      typeof navigator !== "undefined" &&
+      typeof navigator.mediaDevices?.getDisplayMedia === "function";
+
+    console.log("[screen share] secureContext:", secureContext);
+    console.log("[screen share] inIframe:", inIframe);
+    console.log("[screen share] getDisplayMedia available:", apiAvailable);
+
+    if (!apiAvailable) {
       return "unsupported";
     }
 
     const tryGetDisplayMedia = async (
       constraints: DisplayMediaStreamOptions
     ): Promise<MediaStream> => {
+      console.log("[screen share] trying constraints:", constraints);
       return navigator.mediaDevices.getDisplayMedia(constraints);
     };
 
@@ -402,10 +416,11 @@ export function useWebRTC({
       let display: MediaStream | undefined;
       let lastError: unknown;
 
-      // Try the constraint shapes browsers accept, most specific first.
+      // Try every constraint shape known to work in different browsers.
       const constraintAttempts: DisplayMediaStreamOptions[] = [
         { video: true, audio: false },
         { video: true },
+        {},
       ];
 
       for (const constraints of constraintAttempts) {
@@ -416,6 +431,11 @@ export function useWebRTC({
         } catch (cause: unknown) {
           lastError = cause;
           const name = errorName(cause);
+          const message = errorMessage(cause);
+          console.log(
+            `[screen share] constraints failed: ${name} - ${message}`,
+            cause
+          );
           // If the browser rejected the constraints themselves, try the next
           // shape. Anything else (permission, security, cancellation) is final.
           if (name !== "TypeError" && name !== "OverconstrainedError") {
@@ -428,6 +448,7 @@ export function useWebRTC({
         const cause = lastError;
         const name = errorName(cause);
         const message = errorMessage(cause).toLowerCase();
+        console.error("[screen share] final error:", cause);
         const isUserCancel =
           name === "NotAllowedError" ||
           name === "AbortError" ||
@@ -440,17 +461,17 @@ export function useWebRTC({
         if (isUserCancel) {
           return "cancelled";
         }
-        if (name === "SecurityError") {
+        if (name === "SecurityError" || !secureContext) {
           return "unsupported";
         }
-        console.error("Screen share failed:", cause);
         return "error";
       }
 
       const screenTrack = display.getVideoTracks()[0];
+      console.log("[screen share] acquired track:", screenTrack?.label, screenTrack?.readyState);
       if (!screenTrack || screenTrack.readyState === "ended") {
         display.getTracks().forEach((track) => track.stop());
-        console.error("Screen share returned no usable video track");
+        console.error("[screen share] no usable video track in stream");
         return "error";
       }
 
@@ -463,6 +484,7 @@ export function useWebRTC({
       // Stopping from the browser's own floating bar must look identical to
       // stopping from the app: restore the camera and tell the session.
       screenTrack.onended = () => {
+        console.log("[screen share] track ended via browser UI");
         if (screenStreamRef.current !== display) return;
         stopScreenShare();
         onScreenShareStoppedRef.current?.();
