@@ -34,6 +34,7 @@ from app.schemas.websocket import (
     parse_client_message,
 )
 from app.services import participant_service
+from app.utils.password import verify_password
 from app.websocket import meeting_gateway
 from app.websocket.manager import ConnectionManager, get_manager
 
@@ -220,6 +221,17 @@ async def _handle_join(
         await _send_error(websocket, ErrorCode.UNAUTHORIZED_ACTION, "Meeting is not joinable")
         return
 
+    password = (message.password or "").strip() or None
+    if meeting.password_hash is not None and not verify_password(
+        password or "", meeting.password_hash
+    ):
+        await _send_error(
+            websocket,
+            ErrorCode.UNAUTHORIZED_ACTION,
+            "Incorrect meeting password",
+        )
+        return
+
     existing = await _resolve_participant(
         db,
         meeting=meeting,
@@ -264,6 +276,12 @@ async def _handle_join(
         }
     )
 
+    # Fetch the participant row so the initial broadcast matches the persisted
+    # state (new joiners start mic/camera off until their first media_state).
+    joined_participant = await run_in_threadpool(
+        participant_service.get_participant, db, participant_id
+    )
+
     await manager.broadcast_except(
         session.meeting_id,
         {
@@ -272,8 +290,9 @@ async def _handle_join(
                 "id": participant_id,
                 "display_name": message.display_name,
                 "is_host": is_host,
-                "is_muted": False,
-                "is_video_on": True,
+                "is_muted": bool(joined_participant.is_muted if joined_participant else True),
+                "is_video_on": bool(joined_participant.is_video_on if joined_participant else False),
+                "screen_share": bool(joined_participant.screen_share if joined_participant else False),
             },
         },
         exclude={participant_id},
@@ -639,10 +658,11 @@ async def _handle_end_meeting(
         session.meeting_id,
         {"type": "meeting_ended", "meeting_id": session.meeting_id},
     )
+    # close_meeting closes every socket in the meeting (including this one),
+    # so we must not call websocket.close() again.
     await manager.close_meeting(session.meeting_id)
 
     session.closing = True
-    await websocket.close()
 
 
 async def _handle_reaction(
