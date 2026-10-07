@@ -391,16 +391,41 @@ export function useWebRTC({
       return "unsupported";
     }
 
+    const tryGetDisplayMedia = async (
+      constraints: DisplayMediaStreamOptions
+    ): Promise<MediaStream> => {
+      return navigator.mediaDevices.getDisplayMedia(constraints);
+    };
+
     sharePendingRef.current = true;
     try {
-      let display: MediaStream;
-      try {
-        // Use the most widely-compatible constraint form. Some browsers reject
-        // an explicit audio constraint or only support { video: true }.
-        display = await navigator.mediaDevices.getDisplayMedia({
-          video: true,
-        });
-      } catch (cause: unknown) {
+      let display: MediaStream | undefined;
+      let lastError: unknown;
+
+      // Try the constraint shapes browsers accept, most specific first.
+      const constraintAttempts: DisplayMediaStreamOptions[] = [
+        { video: true, audio: false },
+        { video: true },
+      ];
+
+      for (const constraints of constraintAttempts) {
+        try {
+          display = await tryGetDisplayMedia(constraints);
+          lastError = undefined;
+          break;
+        } catch (cause: unknown) {
+          lastError = cause;
+          const name = errorName(cause);
+          // If the browser rejected the constraints themselves, try the next
+          // shape. Anything else (permission, security, cancellation) is final.
+          if (name !== "TypeError" && name !== "OverconstrainedError") {
+            break;
+          }
+        }
+      }
+
+      if (display === undefined) {
+        const cause = lastError;
         const name = errorName(cause);
         const message = errorMessage(cause).toLowerCase();
         const isUserCancel =
@@ -415,7 +440,7 @@ export function useWebRTC({
         if (isUserCancel) {
           return "cancelled";
         }
-        if (name === "SecurityError" || name === "OverconstrainedError") {
+        if (name === "SecurityError") {
           return "unsupported";
         }
         console.error("Screen share failed:", cause);
@@ -425,7 +450,8 @@ export function useWebRTC({
       const screenTrack = display.getVideoTracks()[0];
       if (!screenTrack || screenTrack.readyState === "ended") {
         display.getTracks().forEach((track) => track.stop());
-        return "unsupported";
+        console.error("Screen share returned no usable video track");
+        return "error";
       }
 
       cameraTrackRef.current = localStream?.getVideoTracks()[0] ?? null;
