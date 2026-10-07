@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { STORAGE_KEYS } from "@/lib/constants";
 
 export interface MediaDevicesState {
@@ -207,7 +213,14 @@ export function useMediaDevices(): MediaDevicesState {
   const [selectedAudioOutputId, setSelectedAudioOutputId] = useState<string | null>(() =>
     readStored(STORAGE_KEYS.audioOutput)
   );
-  const [canSelectSpeaker] = useState(supportsSpeakerSelection);
+  // `supportsSpeakerSelection()` reads `HTMLMediaElement.prototype`, which is
+  // unavailable during SSR. useSyncExternalStore lets us return false on the
+  // server and the real capability on the client without a hydration mismatch.
+  const canSelectSpeaker = useSyncExternalStore(
+    () => () => {},
+    () => supportsSpeakerSelection(),
+    () => false
+  );
 
   // Mirrors of state that async code needs to read without re-subscribing.
   const audioInputIdRef = useRef<string | null>(selectedAudioInputId);
