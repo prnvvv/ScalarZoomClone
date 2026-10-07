@@ -8,7 +8,8 @@ interface AuthShellProps {
 
 /**
  * Full-screen authentication shell used by the Clerk SignIn and SignUp pages.
- * Provides a clean, Zoom-inspired centered card with the application brand.
+ * Provides one intentional, centered authentication surface: brand on top and
+ * a single panel that Clerk renders flush inside (no card inside a card).
  */
 export function AuthShell({ children }: AuthShellProps) {
   return (
@@ -23,7 +24,7 @@ export function AuthShell({ children }: AuthShellProps) {
       </header>
 
       <main className="auth-page__main">
-        <div className="auth-card">{children}</div>
+        <div className="auth-panel">{children}</div>
       </main>
 
       <footer className="auth-page__footer">
