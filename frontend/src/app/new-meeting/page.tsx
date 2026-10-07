@@ -12,12 +12,22 @@ export default function NewMeetingPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [password, setPassword] = useState("");
 
   async function startMeeting() {
     setStarting(true);
     setError(null);
     try {
-      const meeting = await createMeeting({ title: "Instant Meeting" });
+      const meeting = await createMeeting({
+        title: "Instant Meeting",
+        password: password.trim() || undefined,
+      });
+      if (password.trim()) {
+        window.sessionStorage.setItem(
+          `scalarmeet.password.${meeting.meeting_id}`,
+          password.trim()
+        );
+      }
       router.push(`/meetings/${meeting.meeting_id}`);
     } catch (cause) {
       setError(toUserMessage(cause));
@@ -47,6 +57,21 @@ export default function NewMeetingPage() {
           The meeting goes live the moment you start it. You can invite
           people from inside the room.
         </p>
+
+        <div className="field" style={{ marginTop: 16 }}>
+          <label className="field__label" htmlFor="new-meeting-password">
+            Meeting password (optional)
+          </label>
+          <input
+            id="new-meeting-password"
+            className="input"
+            type="password"
+            placeholder="Leave blank for an open meeting"
+            value={password}
+            autoComplete="off"
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </div>
 
         <div className="form-actions">
           <button
