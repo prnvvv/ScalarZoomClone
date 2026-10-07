@@ -15,6 +15,7 @@ import {
   SettingsIcon,
   VideoSlashBrandIcon,
 } from "@/components/icons";
+import { clerkAppearance } from "@/lib/clerk-appearance";
 import { APP_NAME } from "@/lib/constants";
 import { cx } from "@/lib/utils";
 
@@ -88,12 +89,12 @@ export function TopNav({ onMenuToggle, sidebarOpen }: TopNavProps) {
         </button>
 
         <Show when="signed-out">
-          <SignInButton mode="modal">
+          <SignInButton mode="modal" appearance={clerkAppearance}>
             <button type="button" className="btn btn--secondary btn--sm">
               Sign in
             </button>
           </SignInButton>
-          <SignUpButton mode="modal">
+          <SignUpButton mode="modal" appearance={clerkAppearance}>
             <button type="button" className="btn btn--primary btn--sm">
               Sign up
             </button>
@@ -108,7 +109,7 @@ export function TopNav({ onMenuToggle, sidebarOpen }: TopNavProps) {
           >
             <SettingsIcon />
           </Link>
-          <UserButton />
+          <UserButton appearance={clerkAppearance} />
         </Show>
       </div>
     </header>
