@@ -11,8 +11,6 @@ import {
   MicOffIcon,
   MoreHorizontalIcon,
   PhoneOffIcon,
-  ScreenShareIcon,
-  ScreenShareOffIcon,
   SettingsIcon,
   ShieldIcon,
   SmileIcon,
@@ -53,7 +51,6 @@ interface ControlBarProps {
   /** False when the camera could not be acquired (blocked or missing). */
   videoAvailable: boolean;
   participantsOpen: boolean;
-  isScreenSharing: boolean;
   isHost: boolean;
   layout: RoomLayoutMode;
   isFullscreen: boolean;
@@ -62,7 +59,6 @@ interface ControlBarProps {
   onToggleMute: () => void;
   onToggleVideo: () => void;
   onToggleParticipants: () => void;
-  onToggleScreenShare: () => void;
   onReact: (emoji: string) => void;
   onSetLayout: (layout: RoomLayoutMode) => void;
   onOpenSettings: (tab: SettingsTab) => void;
@@ -92,7 +88,6 @@ export function ControlBar({
   audioAvailable,
   videoAvailable,
   participantsOpen,
-  isScreenSharing,
   isHost,
   layout,
   isFullscreen,
@@ -101,7 +96,6 @@ export function ControlBar({
   onToggleMute,
   onToggleVideo,
   onToggleParticipants,
-  onToggleScreenShare,
   onReact,
   onSetLayout,
   onOpenSettings,
@@ -111,13 +105,6 @@ export function ControlBar({
   onEndMeeting,
   onLeave,
 }: ControlBarProps) {
-  // Screen capture needs a secure context; on plain http over a LAN IP the
-  // API does not exist at all, so the control says so instead of failing
-  // silently when clicked.
-  const canShare =
-    typeof navigator !== "undefined" &&
-    typeof navigator.mediaDevices?.getDisplayMedia === "function";
-
   const micLive = audioJoined && audioAvailable;
   const micIcon = micLive && !isMuted ? <MicIcon size={20} /> : <MicOffIcon size={20} />;
   const audioName = !audioJoined
@@ -323,36 +310,6 @@ export function ControlBar({
             />
           )}
         </RoomPopover>
-
-        <button
-          type="button"
-          className={cx(
-            "control",
-            isScreenSharing ? "control--danger" : "control--share"
-          )}
-          aria-pressed={isScreenSharing}
-          aria-label={isScreenSharing ? "Stop sharing screen" : "Share screen"}
-          title={
-            canShare
-              ? isScreenSharing
-                ? "Stop sharing"
-                : "Share screen"
-              : "Screen sharing needs HTTPS or localhost"
-          }
-          disabled={!canShare}
-          onClick={onToggleScreenShare}
-        >
-          <span className="control__button">
-            {isScreenSharing ? (
-              <ScreenShareOffIcon size={20} />
-            ) : (
-              <ScreenShareIcon size={20} />
-            )}
-          </span>
-          <span className="control__label">
-            {isScreenSharing ? "Stop Share" : "Share"}
-          </span>
-        </button>
 
         {isHost ? (
           <RoomPopover
