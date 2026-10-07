@@ -16,6 +16,7 @@ export interface Participant {
   is_host: boolean;
   is_muted: boolean;
   is_video_on: boolean;
+  screen_share?: boolean;
   joined_at: string | null;
   left_at: string | null;
 }
