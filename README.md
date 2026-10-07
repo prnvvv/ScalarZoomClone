@@ -54,8 +54,7 @@
 
 | | URL |
 |---|---|
-| **Web app (frontend)** | `ADD_HOSTED_WEBSITE_LINK_HERE` |
-| **API + WebSocket (backend)** | `ADD_HOSTED_WEBSITE_LINK_HERE` |
+| **Web app (frontend)** | `https://scalar-zoom-clone.vercel.app/` |
 
 > The application is split into two services. They can be deployed together or
 > separately — the frontend only needs to know the backend origin
