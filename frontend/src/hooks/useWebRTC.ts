@@ -179,13 +179,17 @@ export function useWebRTC({
       // somewhere to go even when the camera or microphone was never
       // granted — otherwise a screen share with no camera transmits nothing.
       const shareStream = screenStreamRef.current;
-      const sharedVideo = shareStream?.getVideoTracks()[0] ?? null;
+      const sharedVideo =
+        shareStream?.getVideoTracks().find((t) => t.readyState !== "ended") ?? null;
       if (localStream) {
         for (const track of localStream.getAudioTracks()) {
           pc.addTrack(track, localStream);
         }
       }
-      const outgoingVideo = sharedVideo ?? localStream?.getVideoTracks()[0] ?? null;
+      const outgoingVideo =
+        sharedVideo ??
+        localStream?.getVideoTracks().find((t) => t.readyState !== "ended") ??
+        null;
       if (outgoingVideo) {
         const owner = sharedVideo === outgoingVideo ? shareStream : localStream;
         if (owner) pc.addTrack(outgoingVideo, owner);
