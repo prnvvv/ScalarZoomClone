@@ -1,0 +1,368 @@
+/* ------------------------------------------------------------------
+   Authentication pages (Clerk SignIn / SignUp)
+   Full-screen, Zoom-inspired centered card layout.
+   ------------------------------------------------------------------ */
+
+.auth-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--color-bg);
+}
+
+.auth-page__header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 20px;
+}
+
+.auth-page__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.auth-page__brand:hover {
+  text-decoration: none;
+}
+
+.auth-page__logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-primary);
+}
+
+.auth-page__name {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.auth-page__main {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 0 20px 40px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  padding: 32px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.auth-page__footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+/* Clerk component overrides inside the auth card ------------------- */
+
+.cl-card {
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+.cl-header {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.cl-headerTitle {
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  line-height: var(--leading-tight);
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+  margin-bottom: 6px;
+}
+
+.cl-headerSubtitle {
+  font-size: var(--text-base);
+  color: var(--color-text-secondary);
+  line-height: var(--leading-normal);
+}
+
+.cl-socialButtons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.cl-socialButtonsBlockButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 42px;
+  padding: 0 14px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-base);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.cl-socialButtonsBlockButton:hover {
+  background: var(--color-surface-alt);
+  border-color: var(--color-text-muted);
+}
+
+.cl-socialButtonsBlockButtonText {
+  color: inherit;
+}
+
+.cl-socialButtonsProviderIcon {
+  width: 18px;
+  height: 18px;
+}
+
+.cl-dividerRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0;
+  color: var(--color-text-muted);
+}
+
+.cl-dividerRow::before,
+.cl-dividerRow::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+
+.cl-dividerText {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.cl-formFieldLabel {
+  display: block;
+  margin-bottom: 6px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.cl-formFieldInput {
+  width: 100%;
+  height: 44px;
+  padding: 9px 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-base);
+  transition: border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.cl-formFieldInput:hover {
+  border-color: var(--color-text-muted);
+}
+
+.cl-formFieldInput:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(11, 92, 255, 0.16);
+}
+
+.cl-formFieldInputShowPasswordButton {
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.cl-formFieldErrorText {
+  font-size: var(--text-xs);
+  color: var(--color-danger);
+  margin-top: 4px;
+}
+
+.cl-formButtonPrimary {
+  width: 100%;
+  height: 44px;
+  margin-top: 8px;
+  padding: 0 16px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  font-size: var(--text-base);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.cl-formButtonPrimary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.cl-formButtonPrimary:active:not(:disabled) {
+  background: var(--color-primary-active);
+}
+
+.cl-formButtonPrimary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cl-formButtonReset {
+  color: var(--color-primary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.cl-formButtonReset:hover {
+  text-decoration: underline;
+}
+
+.cl-footer {
+  margin-top: 20px;
+  text-align: center;
+}
+
+.cl-footerAction {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.cl-footerActionLink {
+  color: var(--color-primary);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.cl-footerActionLink:hover {
+  text-decoration: underline;
+}
+
+.cl-identityPreview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 18px;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.cl-identityPreviewText {
+  font-size: var(--text-base);
+  color: var(--color-text);
+  word-break: break-word;
+}
+
+.cl-identityPreviewEditButton {
+  color: var(--color-primary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.cl-alert {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  margin-bottom: 16px;
+  border-radius: var(--radius-md);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+}
+
+.cl-alertText {
+  line-height: var(--leading-normal);
+}
+
+.cl-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(11, 92, 255, 0.22);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: cl-spin 700ms linear infinite;
+}
+
+@keyframes cl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.cl-otpCodeFieldInput {
+  width: 44px;
+  height: 52px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  text-align: center;
+  transition: border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.cl-otpCodeFieldInput:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(11, 92, 255, 0.16);
+}
+
+/* Responsive ------------------------------------------------------- */
+
+@media (max-width: 480px) {
+  .auth-page__header {
+    padding: 22px 16px;
+  }
+
+  .auth-page__main {
+    padding: 0 16px 32px;
+  }
+
+  .auth-card {
+    padding: 24px 20px;
+  }
+
+  .cl-headerTitle {
+    font-size: var(--text-xl);
+  }
+}
