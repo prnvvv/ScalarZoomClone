@@ -17,8 +17,10 @@ export interface Meeting {
 export interface MeetingCreatePayload {
   title: string;
   description?: string;
+  password?: string;
 }
 
 export interface MeetingJoinPayload {
   display_name: string;
+  password?: string;
 }
