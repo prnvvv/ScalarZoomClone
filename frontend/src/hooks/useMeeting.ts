@@ -27,6 +27,7 @@ interface UseMeetingOptions {
   meeting: Meeting | null;
   meetingId: string;
   displayName: string;
+  password?: string;
 }
 
 export interface MeetingDeviceSettings {
@@ -105,6 +106,7 @@ export function useMeeting({
   meeting,
   meetingId,
   displayName,
+  password,
 }: UseMeetingOptions): MeetingSession {
   const [phase, setPhase] = useState<MeetingPhase>("preparing");
   const [failure, setFailure] = useState<string | null>(null);
@@ -343,6 +345,7 @@ export function useMeeting({
       try {
         await joinMeeting(meetingId, {
           display_name: clampDisplayName(displayName),
+          password: password?.trim() || undefined,
         });
       } catch (cause: unknown) {
         if (!active) return;
@@ -358,7 +361,7 @@ export function useMeeting({
     return () => {
       active = false;
     };
-  }, [meeting, phase, meetingId, displayName, acquireMedia]);
+  }, [meeting, phase, meetingId, displayName, password, acquireMedia]);
 
   // Phase 2: every time the socket opens (first connect or after a
   // reconnect), join and re-bind our participant row. Exactly one `join` per
@@ -380,8 +383,9 @@ export function useMeeting({
       meeting_id: meetingId,
       participant_id: participantId && participantId > 0 ? participantId : null,
       display_name: clampDisplayName(nameRef.current),
+      password: password?.trim() || undefined,
     });
-  }, [ws.status, phase, meetingId, send]);
+  }, [ws.status, phase, meetingId, password, send]);
 
   // Report actual media state whenever it changes or the room is rejoined.
   useEffect(() => {
