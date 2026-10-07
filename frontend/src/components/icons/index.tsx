@@ -68,27 +68,6 @@ export function MicOffIcon(props: IconProps) {
   );
 }
 
-export function ScreenShareIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <rect x="2.5" y="4" width="19" height="13" rx="2.5" />
-      <path d="M8.5 21h7" />
-      <path d="M12 8v5" />
-      <path d="m9.75 10.25 2.25-2.25 2.25 2.25" />
-    </Icon>
-  );
-}
-
-export function ScreenShareOffIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <rect x="2.5" y="4" width="19" height="13" rx="2.5" />
-      <path d="M8.5 21h7" />
-      <path d="m3 3 18 18" />
-    </Icon>
-  );
-}
-
 export function UsersIcon(props: IconProps) {
   return (
     <Icon {...props}>
