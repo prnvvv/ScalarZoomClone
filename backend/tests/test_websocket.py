@@ -411,6 +411,65 @@ def test_invalid_meeting_rejected(client):
 
 
 @requires_bd1
+def test_password_protected_meeting_rejects_missing_password(client, db):
+    from app.models.meeting import Meeting, MeetingStatus
+    from app.utils.password import hash_password
+
+    db.add(
+        Meeting(
+            meeting_id=MEETING_B,
+            host_id=1,
+            title="Protected Meeting",
+            start_time=datetime.now(timezone.utc),
+            status=MeetingStatus.ACTIVE,
+            meeting_link=f"https://meet.example.com/{MEETING_B}",
+            password_hash=hash_password("secret123"),
+        )
+    )
+    db.commit()
+
+    with client.websocket_connect(f"/ws/meetings/{MEETING_B}") as socket:
+        socket.send_json(
+            {"type": "join", "meeting_id": MEETING_B, "display_name": "Guest"}
+        )
+        response = socket.receive_json()
+    assert response["type"] == "error"
+    assert response["code"] == "UNAUTHORIZED_ACTION"
+
+
+@requires_bd1
+def test_password_protected_meeting_accepts_correct_password(client, db):
+    from app.models.meeting import Meeting, MeetingStatus
+    from app.utils.password import hash_password
+
+    db.add(
+        Meeting(
+            meeting_id=MEETING_B,
+            host_id=1,
+            title="Protected Meeting",
+            start_time=datetime.now(timezone.utc),
+            status=MeetingStatus.ACTIVE,
+            meeting_link=f"https://meet.example.com/{MEETING_B}",
+            password_hash=hash_password("secret123"),
+        )
+    )
+    db.commit()
+
+    with client.websocket_connect(f"/ws/meetings/{MEETING_B}") as socket:
+        socket.send_json(
+            {
+                "type": "join",
+                "meeting_id": MEETING_B,
+                "display_name": "Guest",
+                "password": "secret123",
+            }
+        )
+        response = socket.receive_json()
+    assert response["type"] == "joined"
+    assert response["meeting_id"] == MEETING_B
+
+
+@requires_bd1
 def test_participant_joined_and_left_broadcast(client, db):
     _seed_meeting(db, MEETING_A)
     first = _create_participant(db, MEETING_A, "Alice")
