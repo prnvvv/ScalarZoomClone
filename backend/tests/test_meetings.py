@@ -588,15 +588,52 @@ def test_user_endpoint_returns_demo_user(client):
     assert response.json()["email"] == DEMO_USER_EMAIL
 
 
+def test_create_meeting_with_password_and_join_requires_it(client):
+    created = client.post(
+        "/api/meetings", json={"title": "Protected", "password": "secret123"}
+    ).json()
+    meeting_id = created["meeting_id"]
+
+    # Missing password is rejected.
+    assert (
+        client.post(
+            f"/api/meetings/{meeting_id}/join", json={"display_name": "Ann"}
+        ).status_code
+        == 403
+    )
+
+    # Wrong password is rejected.
+    assert (
+        client.post(
+            f"/api/meetings/{meeting_id}/join",
+            json={"display_name": "Ann", "password": "wrong"},
+        ).status_code
+        == 403
+    )
+
+    # Correct password allows joining.
+    response = client.post(
+        f"/api/meetings/{meeting_id}/join",
+        json={"display_name": "Ann", "password": "secret123"},
+    )
+    assert response.status_code == 200
+    assert response.json()["meeting_id"] == meeting_id
+
+    # Response must never leak the password hash.
+    assert "password_hash" not in response.json()
+
+
 # --------------------------------------------------------------------------
 # SQLite wiring
 # --------------------------------------------------------------------------
 
 
 def test_schema_matches_existing_sqlite_tables():
-    engine = create_engine(
-        f"sqlite:///{os.path.join(tempfile.gettempdir(), 'zoom_p2_schema.db')}"
-    )
+    schema_path = os.path.join(tempfile.gettempdir(), 'zoom_p2_schema.db')
+    # Start from a clean file so schema additions are reflected.
+    if os.path.exists(schema_path):
+        os.remove(schema_path)
+    engine = create_engine(f"sqlite:///{schema_path}")
     init_db()
     Base.metadata.create_all(bind=engine)
     inspector = inspect(engine)
@@ -617,6 +654,7 @@ def test_schema_matches_existing_sqlite_tables():
         "duration",
         "status",
         "meeting_link",
+        "password_hash",
         "created_at",
     } <= {column["name"] for column in inspector.get_columns("meetings")}
     assert {
