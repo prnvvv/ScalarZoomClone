@@ -115,7 +115,18 @@ export default function MeetingRoomPage() {
   );
   const localName = storedName || user?.name || "You";
 
-  const session = useMeeting({ meeting, meetingId, displayName: localName });
+  const storedPassword = useSyncExternalStore(
+    subscribeToSessionName,
+    () => window.sessionStorage.getItem(STORAGE_KEYS.meetingPassword(meetingId)) ?? "",
+    () => ""
+  );
+
+  const session = useMeeting({
+    meeting,
+    meetingId,
+    displayName: localName,
+    password: storedPassword,
+  });
   const settingsOpen = settingsTab !== null;
 
   // Restore the pinned participant once we are in the browser (deferred so
