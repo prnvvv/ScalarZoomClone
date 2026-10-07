@@ -1,3 +1,4 @@
+import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "@/styles/primitives.css";
@@ -27,7 +28,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <ToastProvider>{children}</ToastProvider>
+        <ClerkProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </ClerkProvider>
       </body>
     </html>
   );
