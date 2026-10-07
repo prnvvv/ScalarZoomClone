@@ -34,12 +34,6 @@ export interface MediaStateMessage {
   is_video_on: boolean;
 }
 
-export interface ScreenShareMessage {
-  type: "screen_share";
-  participant_id: number;
-  active: boolean;
-}
-
 export interface MuteParticipantMessage {
   type: "mute_participant";
   participant_id: number;
@@ -74,7 +68,6 @@ export type ClientMessage =
   | SignalPayloadMessage
   | MeetingStateRequest
   | MediaStateMessage
-  | ScreenShareMessage
   | MuteParticipantMessage
   | RemoveParticipantMessage
   | EndMeetingMessage
