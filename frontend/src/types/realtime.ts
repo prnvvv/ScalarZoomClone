@@ -7,6 +7,7 @@ export interface JoinMessage {
   meeting_id: string;
   participant_id?: number | null;
   display_name: string;
+  password?: string;
 }
 
 export interface LeaveMessage {
