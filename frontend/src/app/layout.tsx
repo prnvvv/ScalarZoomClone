@@ -7,6 +7,7 @@ import "@/styles/dashboard.css";
 import "@/styles/meeting.css";
 import "@/styles/auth.css";
 import { ToastProvider } from "@/components/common/ToastProvider";
+import { authLocalization } from "@/lib/auth-appearance";
 
 export const metadata: Metadata = {
   title: {
@@ -29,7 +30,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <ClerkProvider>
+        <ClerkProvider localization={authLocalization}>
           <ToastProvider>{children}</ToastProvider>
         </ClerkProvider>
       </body>
