@@ -11,8 +11,8 @@ MAX_DISPLAY_NAME_LENGTH = 100
 
 class ParticipantBase(BaseModel):
     display_name: str = Field(min_length=1, max_length=MAX_DISPLAY_NAME_LENGTH)
-    is_muted: bool = False
-    is_video_on: bool = True
+    is_muted: bool = True
+    is_video_on: bool = False
 
 
 class ParticipantCreate(ParticipantBase):
@@ -41,6 +41,7 @@ class ParticipantOut(ParticipantBase):
     # Participant has no user column yet; kept for contract compatibility.
     user_id: int | None = None
     is_host: bool
+    screen_share: bool = False
     joined_at: datetime | None = None
     left_at: datetime | None = None
 
