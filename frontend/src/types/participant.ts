@@ -16,7 +16,6 @@ export interface Participant {
   is_host: boolean;
   is_muted: boolean;
   is_video_on: boolean;
-  screen_share?: boolean;
   joined_at: string | null;
   left_at: string | null;
 }
@@ -27,7 +26,6 @@ export interface ParticipantSummary {
   is_host: boolean;
   is_muted: boolean;
   is_video_on: boolean;
-  screen_share?: boolean;
 }
 
 /**
@@ -50,5 +48,4 @@ export interface ParticipantPatch {
   is_host?: boolean;
   is_muted?: boolean;
   is_video_on?: boolean;
-  screen_share?: boolean;
 }
