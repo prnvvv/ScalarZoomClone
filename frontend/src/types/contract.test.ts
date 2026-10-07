@@ -50,7 +50,6 @@ const SUMMARY_FIXTURE = {
   is_host: false,
   is_muted: false,
   is_video_on: true,
-  screen_share: false,
 } as const;
 
 describe("REST contract: meeting", () => {
@@ -124,7 +123,6 @@ describe("REST contract: participant", () => {
 
   it("types the participant summary broadcast over the socket", () => {
     const summary: ParticipantSummary = SUMMARY_FIXTURE;
-    expect(summary.screen_share).toBe(false);
     expect(summary.is_host).toBe(false);
   });
 });
@@ -136,7 +134,6 @@ describe("WebSocket contract", () => {
       { type: "leave", participant_id: 4 },
       { type: "meeting_state", participant_id: 4 },
       { type: "media_state", participant_id: 4, is_muted: false, is_video_on: true },
-      { type: "screen_share", participant_id: 4, active: true },
       { type: "mute_participant", participant_id: 1, target_id: 4, is_muted: true },
       { type: "remove_participant", participant_id: 1, target_id: 4 },
       { type: "end_meeting", participant_id: 1 },
@@ -166,7 +163,6 @@ describe("WebSocket contract", () => {
         "leave",
         "meeting_state",
         "media_state",
-        "screen_share",
         "mute_participant",
         "remove_participant",
         "end_meeting",
