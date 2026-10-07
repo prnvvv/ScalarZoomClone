@@ -40,10 +40,10 @@ class Participant(Base):
         Boolean, default=False, server_default=false()
     )
     is_muted: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default=false()
+        Boolean, default=True, server_default=true()
     )
     is_video_on: Mapped[bool] = mapped_column(
-        Boolean, default=True, server_default=true()
+        Boolean, default=False, server_default=false()
     )
     screen_share: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=false()
