@@ -1,21 +1,22 @@
 "use client";
 
-import { useState } from "react";
-import { useToast } from "@/components/common/ToastProvider";
-import { DeviceSelector } from "@/components/meeting/DeviceSelector";
+import { SignInButton, Show } from "@clerk/nextjs";
 import { AppShell } from "@/components/layout/AppShell";
+import { DeviceSelector } from "@/components/meeting/DeviceSelector";
+import { useToast } from "@/components/common/ToastProvider";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useDisplayNamePreference } from "@/hooks/useDisplayNamePreference";
 import { useMediaDevices } from "@/hooks/useMediaDevices";
 import { APP_NAME, MAX_DISPLAY_NAME_LENGTH } from "@/lib/constants";
+import { getInitials } from "@/lib/utils";
+import { useState } from "react";
 
 export default function SettingsPage() {
-  const { user } = useCurrentUser();
+  const { user: resolvedUser } = useCurrentUser();
   const { displayName, saveDisplayName } = useDisplayNamePreference();
   const { toast } = useToast();
   const media = useMediaDevices();
 
-  // Seeded from the saved preference; the field owns the value while editing.
   const [name, setName] = useState(displayName);
   const [nameError, setNameError] = useState<string | null>(null);
 
@@ -37,27 +38,81 @@ export default function SettingsPage() {
     toast("Display name saved", "success");
   };
 
+  const accountName = resolvedUser?.name ?? "Guest";
+  const accountEmail = resolvedUser?.email ?? "";
+  const isClerk = resolvedUser?.isClerk ?? false;
+  const isGuest = resolvedUser?.isGuest ?? false;
+
   return (
     <AppShell>
       <div className="page-header">
         <div>
           <h1 className="page-header__title">Settings</h1>
           <p className="page-header__subtitle">
-            Preferences are saved for this browser tab only.
+            Manage your account, display name, and meeting devices.
           </p>
         </div>
       </div>
 
       <div className="section__body settings">
+        <section className="card card--pad" aria-labelledby="settings-account">
+          <div className="card__header">
+            <h2 className="card__title" id="settings-account">
+              Account
+            </h2>
+          </div>
+
+          <div className="settings__account">
+            <div className="avatar avatar--lg" aria-hidden="true">
+              {getInitials(accountName)}
+            </div>
+            <div className="settings__account-info">
+              <div className="settings__account-name">{accountName}</div>
+              {accountEmail ? (
+                <div className="settings__account-email">{accountEmail}</div>
+              ) : null}
+              <div className="settings__account-status">
+                {isClerk ? (
+                  <>Signed in with Clerk</>
+                ) : isGuest ? (
+                  <>Joining as a guest</>
+                ) : (
+                  <>Using the demo account</>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <Show when="signed-out">
+            <div className="settings__account-cta">
+              <p className="field__hint">
+                Sign in to keep your meetings and profile across sessions.
+              </p>
+              <SignInButton mode="modal">
+                <button type="button" className="btn btn--primary">
+                  Sign in
+                </button>
+              </SignInButton>
+            </div>
+          </Show>
+
+          <Show when="signed-in">
+            <p className="field__hint">
+              Your name and email come from your Clerk profile. Update them in
+              the Clerk account manager.
+            </p>
+          </Show>
+        </section>
+
         <section className="card card--pad" aria-labelledby="settings-profile">
           <div className="card__header">
             <h2 className="card__title" id="settings-profile">
-              Profile
+              Meeting display name
             </h2>
           </div>
           <p className="card__subtitle">
-            This build has no sign-in. The name below is what you join meetings
-            with.
+            This is the name shown to other participants when you join a
+            meeting. It is stored locally in this browser.
           </p>
 
           <form className="settings__form" onSubmit={submitName} noValidate>
@@ -67,9 +122,7 @@ export default function SettingsPage() {
               </label>
               <input
                 id="settings-display-name"
-                className={
-                  nameError ? "input input--invalid" : "input"
-                }
+                className={nameError ? "input input--invalid" : "input"}
                 value={name}
                 maxLength={MAX_DISPLAY_NAME_LENGTH}
                 onChange={(event) => {
@@ -77,7 +130,9 @@ export default function SettingsPage() {
                   if (nameError) setNameError(null);
                 }}
                 aria-invalid={nameError ? true : undefined}
-                aria-describedby={nameError ? "settings-display-name-error" : undefined}
+                aria-describedby={
+                  nameError ? "settings-display-name-error" : undefined
+                }
               />
               {nameError ? (
                 <p className="field__error" id="settings-display-name-error">
@@ -89,12 +144,6 @@ export default function SettingsPage() {
                 </p>
               )}
             </div>
-
-            {user ? (
-              <p className="settings__meta">
-                Signed in as {user.name} · {user.email}
-              </p>
-            ) : null}
 
             <div>
               <button type="submit" className="btn btn--primary">
@@ -137,25 +186,16 @@ export default function SettingsPage() {
           ) : null}
         </section>
 
-        <section className="card card--pad" aria-labelledby="settings-appearance">
-          <div className="card__header">
-            <h2 className="card__title" id="settings-appearance">
-              Appearance
-            </h2>
-          </div>
-          <p className="card__subtitle">
-            The workspace uses a light theme and the meeting room uses a dark
-            one, so video is always the focus. There is no theme switch yet.
-          </p>
-        </section>
-
         <section className="card card--pad" aria-labelledby="settings-about">
           <div className="card__header">
             <h2 className="card__title" id="settings-about">
-              About
+              About {APP_NAME}
             </h2>
           </div>
-          <p className="card__subtitle">{APP_NAME}</p>
+          <p className="card__subtitle">
+            Video conferencing built with Next.js, FastAPI, WebSocket, and
+            WebRTC.
+          </p>
         </section>
       </div>
     </AppShell>
