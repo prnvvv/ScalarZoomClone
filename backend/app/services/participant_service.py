@@ -48,8 +48,10 @@ def create_participant(
         display_name=display_name,
         is_host=is_host,
         user_id=user_id,
-        is_muted=False,
-        is_video_on=True,
+        # New joiners start mic/camera off; the client's first media_state
+        # broadcast refines these within milliseconds.
+        is_muted=True,
+        is_video_on=False,
         screen_share=False,
     )
     db.add(participant)
