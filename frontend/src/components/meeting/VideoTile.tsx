@@ -17,8 +17,6 @@ export interface VideoTileProps {
   mirrored?: boolean;
   /** `fill` crops to the tile, `fit` letterboxes the whole frame. */
   fit?: "fill" | "fit";
-  /** This tile is showing a screen share (always letterboxed + badged). */
-  isScreenShare?: boolean;
   /** Locally pinned participant. */
   isPinned?: boolean;
   /** Floating reactions currently shown above this tile. */
@@ -42,7 +40,6 @@ export function VideoTile({
   videoMuted = false,
   mirrored = false,
   fit = "fill",
-  isScreenShare = false,
   isPinned = false,
   reactions = [],
   menu,
@@ -50,8 +47,7 @@ export function VideoTile({
   children,
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  // A live screen share always renders, even when the camera itself is off.
-  const showVideo = Boolean(stream) && (isVideoOn || isScreenShare);
+  const showVideo = Boolean(stream) && isVideoOn;
 
   useEffect(() => {
     const element = videoRef.current;
@@ -63,7 +59,6 @@ export function VideoTile({
       className={cx(
         "tile",
         speaking && "tile--speaking",
-        isScreenShare && "tile--screen",
         isPinned && "tile--pinned",
         className
       )}
@@ -74,7 +69,7 @@ export function VideoTile({
             ref={videoRef}
             className={cx(
               "tile__video",
-              mirrored && !isScreenShare && "tile__video--mirrored",
+              mirrored && "tile__video--mirrored",
               fit === "fit" && "tile__video--contain"
             )}
             autoPlay
@@ -98,9 +93,6 @@ export function VideoTile({
           <span className="tile__pin" title="Pinned">
             Pinned
           </span>
-        ) : null}
-        {isScreenShare ? (
-          <span className="tile__screen-badge">Presenting</span>
         ) : null}
       </div>
 
