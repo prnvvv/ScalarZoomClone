@@ -55,6 +55,8 @@ export const STORAGE_KEYS = {
   roomPrefs: "scalarmeet.room_prefs",
   /** Pinned participant, per meeting (pin is a local-only view choice). */
   pinnedParticipant: (meetingId: string) => `scalarmeet.pinned.${meetingId}`,
+  /** Optional meeting password remembered for the current session. */
+  meetingPassword: (meetingId: string) => `scalarmeet.password.${meetingId}`,
 } as const;
 
 /** Reaction picker set — transient, never stored as participant state. */
