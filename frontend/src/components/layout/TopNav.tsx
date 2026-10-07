@@ -13,7 +13,6 @@ import {
   HelpIcon,
   MenuIcon,
   SettingsIcon,
-  VideoSlashBrandIcon,
 } from "@/components/icons";
 import { clerkAppearance } from "@/lib/clerk-appearance";
 import { APP_NAME } from "@/lib/constants";
@@ -52,9 +51,6 @@ export function TopNav({ onMenuToggle, sidebarOpen }: TopNavProps) {
       </button>
 
       <Link href="/dashboard" className="brand" aria-label={`${APP_NAME} home`}>
-        <span className="brand__mark">
-          <VideoSlashBrandIcon size={30} />
-        </span>
         <span className="brand__name">{APP_NAME}</span>
       </Link>
 
