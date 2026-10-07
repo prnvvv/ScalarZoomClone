@@ -88,5 +88,7 @@ def get_recent_meetings(
     stmt = select(Meeting).where(Meeting.status.in_(RECENT_STATUSES))
     if host_id is not None:
         stmt = stmt.where(Meeting.host_id == host_id)
-    stmt = stmt.order_by(Meeting.start_time.desc()).limit(limit)
+    # Secondary sort by id desc keeps the order deterministic when two meetings
+    # start in the same microsecond and puts the newer row first.
+    stmt = stmt.order_by(Meeting.start_time.desc(), Meeting.id.desc()).limit(limit)
     return list(db.scalars(stmt).all())
