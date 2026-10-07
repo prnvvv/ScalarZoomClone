@@ -24,3 +24,7 @@ class MeetingNotFoundError(ServiceError):
 
 class MeetingConflictError(ServiceError):
     """The operation conflicts with the meeting's current state (HTTP 409)."""
+
+
+class InvalidPasswordError(ServiceError):
+    """The supplied meeting password is incorrect (HTTP 403)."""
