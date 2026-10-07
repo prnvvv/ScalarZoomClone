@@ -2,7 +2,6 @@ import Link from "next/link";
 import {
   CalendarIcon,
   PlusIcon,
-  ScreenShareIcon,
   VideoIcon,
 } from "@/components/icons";
 
@@ -27,13 +26,6 @@ const TILES = [
     hint: "Plan it for later",
     icon: CalendarIcon,
     modifier: "action-tile--schedule",
-  },
-  {
-    href: "/new-meeting?share=1",
-    label: "Share Screen",
-    hint: "Start with your screen",
-    icon: ScreenShareIcon,
-    modifier: "action-tile--share",
   },
 ];
 
