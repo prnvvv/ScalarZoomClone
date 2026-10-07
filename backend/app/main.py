@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,10 +13,27 @@ from app.database.database import init_db
 logger = logging.getLogger(__name__)
 
 
+@asynccontextmanager
+async def _lifespan(application: FastAPI):
+    # Create the SQLite schema and the demo user before the first request.
+    # Without this a fresh database answers every database route with
+    # "no such table" instead of starting from an empty schema. Failures
+    # propagate so a broken database is not served silently.
+    await run_in_threadpool(init_db)
+    logger.info(
+        "Realtime server ready (stun=%s, origins=%s)",
+        settings.stun_server,
+        settings.cors_origins,
+    )
+    yield
+    # No teardown required; the engine is shared and sessions close themselves.
+
+
 def create_app() -> FastAPI:
     application = FastAPI(
         title=settings.app_name,
         version="1.0.0",
+        lifespan=_lifespan,
     )
 
     application.add_middleware(
@@ -27,19 +45,6 @@ def create_app() -> FastAPI:
     )
 
     _include_routers(application)
-
-    @application.on_event("startup")
-    async def on_startup() -> None:
-        # Create the SQLite schema and the demo user before the first request.
-        # Without this a fresh database answers every database route with
-        # "no such table" instead of starting from an empty schema. Failures
-        # propagate so a broken database is not served silently.
-        await run_in_threadpool(init_db)
-        logger.info(
-            "Realtime server ready (stun=%s, origins=%s)",
-            settings.stun_server,
-            settings.cors_origins,
-        )
 
     @application.get("/health")
     async def health() -> dict[str, str]:
