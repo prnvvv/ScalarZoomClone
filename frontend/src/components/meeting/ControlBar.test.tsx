@@ -5,11 +5,9 @@ import { ControlBar } from "./ControlBar";
 afterEach(cleanup);
 
 beforeEach(() => {
-  // jsdom ships no media devices; give the share control a screen-capture API.
   Object.defineProperty(navigator, "mediaDevices", {
     configurable: true,
     value: {
-      getDisplayMedia: vi.fn().mockResolvedValue(null),
       enumerateDevices: vi.fn().mockResolvedValue([]),
     },
   });
@@ -30,7 +28,6 @@ function renderBar(overrides: Partial<Parameters<typeof ControlBar>[0]> = {}) {
     onToggleVideo: vi.fn(),
     onToggleParticipants: vi.fn(),
     onLeave: vi.fn(),
-    onToggleScreenShare: vi.fn(),
     onReact: vi.fn(),
     onSetLayout: vi.fn(),
     onOpenSettings: vi.fn(),
@@ -45,7 +42,6 @@ function renderBar(overrides: Partial<Parameters<typeof ControlBar>[0]> = {}) {
       audioAvailable
       videoAvailable
       participantsOpen={false}
-      isScreenSharing={false}
       isHost={false}
       layout="auto"
       isFullscreen={false}
@@ -118,33 +114,7 @@ describe("ControlBar", () => {
     expect(onToggleParticipants).toHaveBeenCalledTimes(1);
   });
 
-  it("toggles screen sharing", () => {
-    const { onToggleScreenShare } = renderBar();
-    const share = screen.getByRole("button", { name: "Share screen" });
-
-    fireEvent.click(share);
-    expect(onToggleScreenShare).toHaveBeenCalledTimes(1);
-  });
-
-  it("disables share when screen capture is unsupported", () => {
-    Object.defineProperty(navigator, "mediaDevices", {
-      configurable: true,
-      value: undefined,
-    });
-    renderBar();
-    const share = screen.getByRole("button", { name: "Share screen" });
-    expect((share as HTMLButtonElement).disabled).toBe(true);
-    expect(share.getAttribute("title")).toMatch(/HTTPS/);
-  });
-
-  it("shows stop sharing state when active", () => {
-    renderBar({ isScreenSharing: true });
-    expect(
-      screen.getByRole("button", { name: "Stop sharing screen" })
-    ).toBeTruthy();
-  });
-
-  it("orders controls like Zoom: Audio, Video, Participants, React, Share, More, End", () => {
+  it("orders controls like Zoom: Audio, Video, Participants, React, More, End", () => {
     renderBar();
     const labels = toolbarLabels();
     const expected = [
@@ -152,7 +122,6 @@ describe("ControlBar", () => {
       "Turn camera off",
       "Show participants",
       "Open reactions",
-      "Share screen",
       "Open more options",
       "Leave meeting",
     ];
@@ -179,7 +148,7 @@ describe("ControlBar", () => {
     renderBar({ isHost: true });
     const hostTools = screen.getByRole("button", { name: "Open host tools" });
     expect(toolbarLabels().indexOf("Open host tools")).toBeGreaterThan(
-      toolbarLabels().indexOf("Share screen")
+      toolbarLabels().indexOf("Open reactions")
     );
 
     fireEvent.click(hostTools);
