@@ -7,15 +7,17 @@ import "@/styles/dashboard.css";
 import "@/styles/meeting.css";
 import "@/styles/auth.css";
 import { ToastProvider } from "@/components/common/ToastProvider";
-import { authLocalization } from "@/lib/auth-appearance";
 
 export const metadata: Metadata = {
   title: {
-    default: "Scalar Meet",
-    template: "%s | Scalar Meet",
+    default: "Zoom",
+    template: "%s | Zoom",
   },
   description:
     "Video meetings made simple - start, schedule and join meetings from your browser.",
+  icons: {
+    icon: "/images/f3.svg",
+  },
 };
 
 export const viewport: Viewport = {
@@ -30,7 +32,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <ClerkProvider localization={authLocalization}>
+        <ClerkProvider>
           <ToastProvider>{children}</ToastProvider>
         </ClerkProvider>
       </body>
