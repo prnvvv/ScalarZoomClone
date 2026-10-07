@@ -7,11 +7,11 @@ import {
   HomeIcon,
   MeetingsIcon,
   PlusIcon,
-  ScreenShareIcon,
   SettingsIcon,
   UserIcon,
   VideoIcon,
 } from "@/components/icons";
+import { APP_NAME } from "@/lib/constants";
 import { cx } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -39,11 +39,6 @@ export function Sidebar({ open, onNavigate }: SidebarProps) {
   const startInstantMeeting = () => {
     onNavigate();
     router.push("/new-meeting");
-  };
-
-  const shareScreen = () => {
-    onNavigate();
-    router.push("/new-meeting?share=1");
   };
 
   return (
@@ -83,14 +78,7 @@ export function Sidebar({ open, onNavigate }: SidebarProps) {
           <CalendarIcon size={18} />
           Schedule
         </button>
-        <button
-          type="button"
-          className="sidebar__action"
-          onClick={shareScreen}
-        >
-          <ScreenShareIcon size={18} />
-          Share screen
-        </button>
+
       </div>
 
       <div className="sidebar__divider" />
@@ -117,7 +105,7 @@ export function Sidebar({ open, onNavigate }: SidebarProps) {
         </ul>
       </nav>
 
-      <div className="sidebar__footer">Scalar Meet · v1.0</div>
+      <div className="sidebar__footer">{APP_NAME} · v1.0</div>
     </aside>
   );
 }
