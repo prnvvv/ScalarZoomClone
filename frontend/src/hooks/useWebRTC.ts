@@ -380,6 +380,11 @@ export function useWebRTC({
         if (name === "NotAllowedError" || name === "AbortError") {
           return "cancelled";
         }
+        // getDisplayMedia exists but is blocked by the browser (e.g. insecure
+        // HTTP origin); surface the same message as an unsupported context.
+        if (name === "SecurityError") {
+          return "unsupported";
+        }
         return "error";
       }
 
