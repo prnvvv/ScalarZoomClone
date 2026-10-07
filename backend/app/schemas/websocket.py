@@ -27,6 +27,7 @@ class JoinMessage(ClientEvent):
     meeting_id: str = Field(min_length=1, max_length=64)
     participant_id: int | None = Field(default=None, ge=1)
     display_name: str = Field(min_length=1, max_length=120)
+    password: str | None = Field(default=None, max_length=128)
 
 
 class LeaveMessage(ClientEvent):
