@@ -15,12 +15,14 @@ from app.models.user import User
 from app.schemas.meeting import MeetingCreate
 from app.services import history_service
 from app.services.exceptions import (
+    InvalidPasswordError,
     InvalidRequestError,
     MeetingConflictError,
     MeetingNotFoundError,
 )
 from app.utils.datetime_utils import has_ended, is_upcoming, minutes_between, utc_now
 from app.utils.meeting_id import generate_meeting_id
+from app.utils.password import hash_password, verify_password
 from app.utils.validation import (
     validate_host,
     validate_meeting_id,
@@ -43,8 +45,13 @@ __all__ = [
 
 
 def build_meeting_link(meeting_id: str) -> str:
-    """Frontend URL for the public meeting id."""
-    return f"{settings.frontend_url.rstrip('/')}/meetings/{meeting_id}"
+    """Frontend URL for the public meeting id.
+
+    ``FRONTEND_URL`` may list several allowed origins (comma separated); the
+    link itself must use the first, canonical one.
+    """
+    primary_origin = settings.cors_origins[0] if settings.cors_origins else ""
+    return f"{primary_origin.rstrip('/')}/meetings/{meeting_id}"
 
 
 def get_meeting(db: Session, meeting_id: str) -> Meeting | None:
@@ -76,6 +83,7 @@ def create_meeting(
     title = validate_title(payload.title)
     host = require_host(db, host_id)
     description = (payload.description or "").strip() or None
+    password = (payload.password or "").strip() or None
 
     meeting_id = generate_meeting_id(db)
     meeting = Meeting(
@@ -88,6 +96,7 @@ def create_meeting(
         duration=None,
         status=MeetingStatus.ACTIVE,
         meeting_link=build_meeting_link(meeting_id),
+        password_hash=hash_password(password) if password else None,
     )
     db.add(meeting)
     db.commit()
@@ -97,11 +106,12 @@ def create_meeting(
     return meeting
 
 
-def validate_meeting(db: Session, meeting_id: str) -> Meeting:
+def validate_meeting(db: Session, meeting_id: str, *, password: str | None = None) -> Meeting:
     """Check that a meeting may be joined, activating a due scheduled one.
 
     :raises MeetingNotFoundError: unknown public id.
     :raises MeetingConflictError: not started yet, cancelled or already ended.
+    :raises InvalidPasswordError: password-protected meeting and wrong password.
     """
     validate_meeting_id(meeting_id)
     meeting = require_meeting(db, meeting_id)
@@ -121,6 +131,13 @@ def validate_meeting(db: Session, meeting_id: str) -> Meeting:
         raise MeetingConflictError("Meeting has ended")
 
     validate_meeting_state(meeting, JOINABLE_STATUSES, action="join")
+
+    password = (password or "").strip() or None
+    if meeting.password_hash is not None and not verify_password(
+        password or "", meeting.password_hash
+    ):
+        raise InvalidPasswordError("Incorrect meeting password")
+
     return meeting
 
 
