@@ -1,16 +1,25 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eu
 
 cd "$(dirname "$0")/../backend"
 
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON=python3
+else
+  PYTHON=python
+fi
+
 if [ ! -d .venv ]; then
   echo "Creating backend virtual environment..."
-  python3 -m venv .venv
+  "$PYTHON" -m venv .venv
 fi
 
 echo "Activating backend virtual environment..."
-# shellcheck source=/dev/null
-source .venv/bin/activate
+if [ -f .venv/Scripts/activate ]; then
+  source .venv/Scripts/activate
+else
+  source .venv/bin/activate
+fi
 
 if [ ! -r requirements.txt ]; then
   echo "requirements.txt not found in backend/"

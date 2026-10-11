@@ -1,0 +1,3 @@
+# Force LF line endings for scripts so they run in Git Bash on Windows
+scripts/*.sh text eol=lf
+scripts/*.py text eol=lf
