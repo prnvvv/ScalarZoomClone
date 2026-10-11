@@ -5,15 +5,48 @@ SCRIPT_DIR="$(dirname "$0")"
 BACKEND_DIR="$SCRIPT_DIR/../backend"
 FRONTEND_DIR="$SCRIPT_DIR/../frontend"
 
-# Prefer Windows Python (python) over WSL python (python3) in Git Bash/Cygwin
-PYTHON=""
-case "${OSTYPE:-}" in
-  msys|cygwin|win32)
-    command -v python >/dev/null 2>&1 && PYTHON=python
-    ;;
-esac
-[ -z "$PYTHON" ] && command -v python3 >/dev/null 2>&1 && PYTHON=python3
-[ -z "$PYTHON" ] && PYTHON=python
+# Find a working Python. On Windows we want a Windows Python (sys.platform == win32),
+# not a WSL python3 that may lack ensurepip.
+find_python() {
+  local c
+  for c in py python python3; do
+    if command -v "$c" >/dev/null 2>&1; then
+      if "$c" -c "import sys; sys.exit(0 if sys.platform == 'win32' else 1)" >/dev/null 2>&1; then
+        echo "$c"
+        return 0
+      fi
+    fi
+  done
+
+  # Fall back to any Python that can run
+  for c in py python python3; do
+    if command -v "$c" >/dev/null 2>&1; then
+      if "$c" --version >/dev/null 2>&1; then
+        echo "$c"
+        return 0
+      fi
+    fi
+  done
+
+  # Last resort: ask PowerShell where python is
+  if command -v powershell.exe >/dev/null 2>&1; then
+    local winpy
+    winpy=$(powershell.exe -NoProfile -Command "(Get-Command python).Source" 2>/dev/null | tr -d '\r')
+    if [ -n "$winpy" ] && [ -f "$winpy" ]; then
+      echo "$winpy"
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+PYTHON=$(find_python) || {
+  echo "Error: Could not find a working Python interpreter."
+  echo "Please install Python for Windows and make sure 'python' or 'py' is available."
+  exit 1
+}
+echo "Using Python: $PYTHON"
 
 start_backend() {
   echo "=== Starting Backend ==="
@@ -26,7 +59,7 @@ start_backend() {
   fi
 
   if [ ! -d .venv ]; then
-    echo "Creating backend virtual environment with $PYTHON..."
+    echo "Creating backend virtual environment..."
     "$PYTHON" -m venv .venv
   fi
 
