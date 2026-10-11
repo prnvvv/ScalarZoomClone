@@ -5,24 +5,37 @@ SCRIPT_DIR="$(dirname "$0")"
 BACKEND_DIR="$SCRIPT_DIR/../backend"
 FRONTEND_DIR="$SCRIPT_DIR/../frontend"
 
-if command -v python3 >/dev/null 2>&1; then
-  PYTHON=python3
-else
-  PYTHON=python
-fi
+# Prefer Windows Python (python) over WSL python (python3) in Git Bash/Cygwin
+PYTHON=""
+case "${OSTYPE:-}" in
+  msys|cygwin|win32)
+    command -v python >/dev/null 2>&1 && PYTHON=python
+    ;;
+esac
+[ -z "$PYTHON" ] && command -v python3 >/dev/null 2>&1 && PYTHON=python3
+[ -z "$PYTHON" ] && PYTHON=python
 
 start_backend() {
   echo "=== Starting Backend ==="
   cd "$BACKEND_DIR"
+
+  # If a previous venv creation failed half-way, remove it
+  if [ -d .venv ] && [ ! -f .venv/Scripts/activate ] && [ ! -f .venv/bin/activate ]; then
+    echo "Removing incomplete virtual environment..."
+    rm -rf .venv
+  fi
+
   if [ ! -d .venv ]; then
-    echo "Creating backend virtual environment..."
+    echo "Creating backend virtual environment with $PYTHON..."
     "$PYTHON" -m venv .venv
   fi
+
   if [ -f .venv/Scripts/activate ]; then
     source .venv/Scripts/activate
   else
     source .venv/bin/activate
   fi
+
   pip install -r requirements.txt >/dev/null 2>&1
   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 &
   BACKEND_PID=$!

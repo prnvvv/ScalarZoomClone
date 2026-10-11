@@ -3,14 +3,24 @@ set -eu
 
 cd "$(dirname "$0")/../backend"
 
-if command -v python3 >/dev/null 2>&1; then
-  PYTHON=python3
-else
-  PYTHON=python
+# Prefer Windows Python (python) over WSL python (python3) in Git Bash/Cygwin
+PYTHON=""
+case "${OSTYPE:-}" in
+  msys|cygwin|win32)
+    command -v python >/dev/null 2>&1 && PYTHON=python
+    ;;
+esac
+[ -z "$PYTHON" ] && command -v python3 >/dev/null 2>&1 && PYTHON=python3
+[ -z "$PYTHON" ] && PYTHON=python
+
+# If a previous venv creation failed half-way, remove it
+if [ -d .venv ] && [ ! -f .venv/Scripts/activate ] && [ ! -f .venv/bin/activate ]; then
+  echo "Removing incomplete virtual environment..."
+  rm -rf .venv
 fi
 
 if [ ! -d .venv ]; then
-  echo "Creating backend virtual environment..."
+  echo "Creating backend virtual environment with $PYTHON..."
   "$PYTHON" -m venv .venv
 fi
 
